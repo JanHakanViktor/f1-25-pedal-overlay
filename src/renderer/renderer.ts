@@ -1,6 +1,5 @@
 const throttleFill = getElement<HTMLDivElement>("throttleFill");
 const brakeFill = getElement<HTMLDivElement>("brakeFill");
-const speedValue = getElement<HTMLSpanElement>("speedValue");
 const overlayElement = getElement<HTMLElement>("overlay");
 const historyCanvas = getElement<HTMLCanvasElement>("historyCanvas");
 const historyContext = historyCanvas.getContext("2d");
@@ -19,13 +18,10 @@ let shownThrottle = 0;
 let shownBrake = 0;
 let targetThrottle = 0;
 let targetBrake = 0;
-let shownSpeed = 0;
-let targetSpeed = 0;
 let lastSampleAt = -SAMPLE_INTERVAL_MS;
 let snapshotPending = false;
 
 window.overlay.onTelemetry((telemetry) => {
-  targetSpeed = telemetry.speedKph;
   targetThrottle = telemetry.throttle;
   targetBrake = telemetry.brake;
 });
@@ -42,7 +38,6 @@ async function refreshSnapshot(): Promise<void> {
   snapshotPending = true;
   try {
     const snapshot = await window.overlay.getSnapshot();
-    targetSpeed = snapshot.telemetry.speedKph;
     targetThrottle = snapshot.telemetry.throttle;
     targetBrake = snapshot.telemetry.brake;
     overlayElement.classList.toggle("is-locked", snapshot.locked);
@@ -57,11 +52,9 @@ function render(now: number): void {
   // A small amount of smoothing prevents visible UDP stair-stepping without adding lag.
   shownThrottle += (targetThrottle - shownThrottle) * 0.42;
   shownBrake += (targetBrake - shownBrake) * 0.42;
-  shownSpeed += (targetSpeed - shownSpeed) * 0.24;
 
   setMeter(throttleFill, shownThrottle);
   setMeter(brakeFill, shownBrake);
-  speedValue.textContent = String(Math.round(shownSpeed));
 
   if (now - lastSampleAt >= SAMPLE_INTERVAL_MS) {
     inputHistory.push({ time: now, throttle: shownThrottle, brake: shownBrake });

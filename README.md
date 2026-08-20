@@ -1,6 +1,6 @@
 # F1 25 Pedal Overlay
 
-A compact, transparent Windows overlay for **EA SPORTS F1 25**. It displays live speed, solid throttle and brake bars, and a scrolling six-second input graph.
+A compact, transparent Windows overlay for **EA SPORTS F1 25**. It displays solid throttle and brake bars alongside a scrolling six-second input graph.
 
 ## Run it
 

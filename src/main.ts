@@ -11,7 +11,7 @@ const UDP_PORT = Number.isInteger(requestedPort) && requestedPort > 0 && request
   : 20777;
 
 const OVERLAY_WIDTH = 460;
-const OVERLAY_HEIGHT = 180;
+const OVERLAY_HEIGHT = 150;
 
 let window: BrowserWindow | null = null;
 let locked = false;
