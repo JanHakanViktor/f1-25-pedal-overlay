@@ -1,6 +1,10 @@
 const throttleFill = getElement<HTMLDivElement>("throttleFill");
 const brakeFill = getElement<HTMLDivElement>("brakeFill");
 const overlayElement = getElement<HTMLElement>("overlay");
+const steeringGauge = getElement<HTMLElement>("steeringGauge");
+const steeringDial = getElement<HTMLElement>("steeringDial");
+const steeringMarker = getElement<HTMLDivElement>("steeringMarker");
+const steeringValue = getElement<HTMLOutputElement>("steeringValue");
 const historyCanvas = getElement<HTMLCanvasElement>("historyCanvas");
 const historyContext = historyCanvas.getContext("2d");
 
@@ -12,18 +16,23 @@ interface HistorySample {
 
 const HISTORY_DURATION_MS = 6000;
 const SAMPLE_INTERVAL_MS = 40;
+const MAX_STEERING_DEGREES = 180;
+const STEERING_MARKER_TRAVEL_PX = 24;
 const inputHistory: HistorySample[] = [];
 
 let shownThrottle = 0;
 let shownBrake = 0;
+let shownSteering = 0;
 let targetThrottle = 0;
 let targetBrake = 0;
+let targetSteering = 0;
 let lastSampleAt = -SAMPLE_INTERVAL_MS;
 let snapshotPending = false;
 
 window.overlay.onTelemetry((telemetry) => {
   targetThrottle = telemetry.throttle;
   targetBrake = telemetry.brake;
+  targetSteering = telemetry.steering;
 });
 
 window.overlay.onLockChanged((locked) => {
@@ -40,7 +49,10 @@ async function refreshSnapshot(): Promise<void> {
     const snapshot = await window.overlay.getSnapshot();
     targetThrottle = snapshot.telemetry.throttle;
     targetBrake = snapshot.telemetry.brake;
+    targetSteering = snapshot.telemetry.steering;
     overlayElement.classList.toggle("is-locked", snapshot.locked);
+    overlayElement.classList.toggle("has-steering", snapshot.steeringEnabled);
+    steeringGauge.hidden = !snapshot.steeringEnabled;
   } catch {
     // The main process may be closing while a scheduled refresh is in flight.
   } finally {
@@ -52,9 +64,11 @@ function render(now: number): void {
   // A small amount of smoothing prevents visible UDP stair-stepping without adding lag.
   shownThrottle += (targetThrottle - shownThrottle) * 0.42;
   shownBrake += (targetBrake - shownBrake) * 0.42;
+  shownSteering += (targetSteering - shownSteering) * 0.35;
 
   setMeter(throttleFill, shownThrottle);
   setMeter(brakeFill, shownBrake);
+  setSteering(shownSteering);
 
   if (now - lastSampleAt >= SAMPLE_INTERVAL_MS) {
     inputHistory.push({ time: now, throttle: shownThrottle, brake: shownBrake });
@@ -65,6 +79,16 @@ function render(now: number): void {
   while (inputHistory.length > 1 && inputHistory[1].time < cutoff) inputHistory.shift();
   drawHistory(now);
   requestAnimationFrame(render);
+}
+
+function setSteering(input: number): void {
+  const normalized = Math.min(1, Math.max(-1, input));
+  const degrees = Math.round(normalized * MAX_STEERING_DEGREES);
+  const markerOffset = normalized * STEERING_MARKER_TRAVEL_PX;
+
+  steeringMarker.style.setProperty("--steer-offset", `${markerOffset}px`);
+  steeringValue.textContent = `${degrees}°`;
+  steeringDial.setAttribute("aria-valuenow", String(degrees));
 }
 
 function drawHistory(now: number): void {
