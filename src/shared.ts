@@ -19,6 +19,7 @@ export interface OverlaySnapshot {
   status: OverlayStatus;
   locked: boolean;
   demoEnabled: boolean;
+  steeringEnabled: boolean;
 }
 
 export interface OverlayApi {

@@ -11,11 +11,14 @@ const UDP_PORT = Number.isInteger(requestedPort) && requestedPort > 0 && request
   : 20777;
 
 const OVERLAY_WIDTH = 460;
+const STEERING_GAUGE_WIDTH = 86;
 const OVERLAY_HEIGHT = 150;
 
 let window: BrowserWindow | null = null;
 let locked = false;
 let demoEnabled = false;
+let steeringEnabled = app.commandLine.hasSwitch("steering")
+  || process.env.F1_OVERLAY_STEERING === "1";
 let demoTimer: NodeJS.Timeout | null = null;
 let lastTelemetry: PedalTelemetry = {
   speedKph: 0,
@@ -33,11 +36,12 @@ const telemetryServer = new TelemetryServer(UDP_PORT);
 
 function createWindow(): void {
   const workArea = screen.getPrimaryDisplay().workArea;
+  const windowWidth = OVERLAY_WIDTH + (steeringEnabled ? STEERING_GAUGE_WIDTH : 0);
 
   window = new BrowserWindow({
-    width: OVERLAY_WIDTH,
+    width: windowWidth,
     height: OVERLAY_HEIGHT,
-    x: workArea.x + workArea.width - OVERLAY_WIDTH - 40,
+    x: workArea.x + workArea.width - windowWidth - 40,
     y: workArea.y + Math.round((workArea.height - OVERLAY_HEIGHT) / 2),
     transparent: true,
     frame: false,
@@ -59,6 +63,7 @@ function createWindow(): void {
   window.webContents.on("did-finish-load", () => {
     window?.webContents.send("lock-changed", locked);
     window?.webContents.send("demo-changed", demoEnabled);
+    window?.webContents.send("steering-changed", steeringEnabled);
     window?.webContents.send("status", demoEnabled
       ? { state: "connected", message: "Demo signal", port: UDP_PORT }
       : lastStatus
@@ -67,6 +72,24 @@ function createWindow(): void {
   window.on("closed", () => {
     window = null;
   });
+}
+
+function setSteeringEnabled(enabled: boolean): void {
+  if (steeringEnabled === enabled) return;
+  steeringEnabled = enabled;
+
+  if (window) {
+    const bounds = window.getBounds();
+    const nextWidth = OVERLAY_WIDTH + (steeringEnabled ? STEERING_GAUGE_WIDTH : 0);
+    const widthDelta = nextWidth - bounds.width;
+    window.setBounds({
+      x: bounds.x - widthDelta,
+      y: bounds.y,
+      width: nextWidth,
+      height: OVERLAY_HEIGHT
+    });
+    window.webContents.send("steering-changed", steeringEnabled);
+  }
 }
 
 function setLocked(nextLocked: boolean): void {
@@ -127,6 +150,7 @@ app.whenReady().then(() => {
   });
   globalShortcut.register("CommandOrControl+Shift+Q", () => app.quit());
   globalShortcut.register("CommandOrControl+Shift+D", () => setDemoEnabled(!demoEnabled));
+  globalShortcut.register("CommandOrControl+Shift+S", () => setSteeringEnabled(!steeringEnabled));
 });
 
 ipcMain.on("set-locked", (_event, nextLocked: unknown) => {
@@ -140,7 +164,8 @@ ipcMain.handle("get-snapshot", (): OverlaySnapshot => ({
     ? { state: "connected", message: "Demo signal", port: UDP_PORT }
     : lastStatus,
   locked,
-  demoEnabled
+  demoEnabled,
+  steeringEnabled
 }));
 
 app.on("will-quit", () => {
