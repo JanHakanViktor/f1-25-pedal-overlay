@@ -1,6 +1,6 @@
 # F1 25 Pedal Overlay
 
-A compact, transparent Windows overlay for **EA SPORTS F1 25**. It displays solid throttle and brake bars alongside a scrolling six-second input graph.
+A compact, transparent Windows overlay for **EA SPORTS F1 25**. It displays solid throttle and brake bars alongside a scrolling five-second input graph.
 
 An optional steering gauge can be shown to the graph's left. The game reports steering as a normalized value, so the gauge maps full lock to `-180°` and `180°`.
 

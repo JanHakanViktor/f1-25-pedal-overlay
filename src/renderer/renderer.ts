@@ -14,7 +14,7 @@ interface HistorySample {
   brake: number;
 }
 
-const HISTORY_DURATION_MS = 6000;
+const HISTORY_DURATION_MS = 5000;
 const SAMPLE_INTERVAL_MS = 40;
 const MAX_STEERING_DEGREES = 180;
 const STEERING_MARKER_TRAVEL_PX = 24;
