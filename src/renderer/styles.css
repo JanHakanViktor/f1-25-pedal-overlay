@@ -30,6 +30,11 @@ body {
   -webkit-app-region: drag;
 }
 
+.overlay.has-steering {
+  border-top-left-radius: 50vh;
+  border-bottom-left-radius: 50vh;
+}
+
 .telemetry {
   width: 100%;
   height: 100%;
