@@ -57,7 +57,7 @@ body {
 
 .meter {
   position: relative;
-  width: 38px;
+  width: 34px;
   height: 100%;
   justify-self: center;
   overflow: hidden;
