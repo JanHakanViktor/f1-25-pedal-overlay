@@ -3,7 +3,9 @@ import path from "node:path";
 import { TelemetryServer } from "./telemetry/server";
 import type { OverlaySnapshot, OverlayStatus, PedalTelemetry } from "./shared";
 
-const requestedPort = Number.parseInt(process.env.F1_UDP_PORT ?? "20777", 10);
+const portArgument = app.commandLine.getSwitchValue("udp-port")
+  || process.argv.find((argument) => argument.startsWith("--udp-port="))?.split("=")[1];
+const requestedPort = Number.parseInt(portArgument ?? process.env.F1_UDP_PORT ?? "20777", 10);
 const UDP_PORT = Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535
   ? requestedPort
   : 20777;
@@ -108,6 +110,9 @@ telemetryServer.on("status", (status) => {
 app.whenReady().then(() => {
   createWindow();
   telemetryServer.start();
+  if (app.commandLine.hasSwitch("demo") || process.env.F1_OVERLAY_DEMO === "1") {
+    setDemoEnabled(true);
+  }
   globalShortcut.register("CommandOrControl+Shift+O", () => setLocked(!locked));
   globalShortcut.register("CommandOrControl+Shift+H", () => {
     if (!window) return;
