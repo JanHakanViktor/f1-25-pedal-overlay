@@ -4,6 +4,8 @@ A compact, transparent Windows overlay for **EA SPORTS F1 25**. It displays soli
 
 An optional steering gauge can be shown to the graph's left. The game reports steering as a normalized value, so the gauge maps full lock to `-180°` and `180°`.
 
+![F1 25 Pedal Overlay showing the optional steering gauge, telemetry graph, and pedal bars](docs/overlay-demo.png)
+
 ## Run it
 
 1. Install [Node.js](https://nodejs.org/) 20 or newer.
