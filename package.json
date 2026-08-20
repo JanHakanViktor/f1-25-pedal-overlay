@@ -1,0 +1,19 @@
+{
+  "name": "f1-25-pedal-overlay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Transparent throttle and brake input overlay for EA SPORTS F1 25",
+  "main": "dist/main.js",
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc && node scripts/copy-assets.mjs",
+    "start": "npm run build && electron .",
+    "dev": "npm run start",
+    "test": "npm run build && node --test dist/**/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "^43.4.1",
+    "typescript": "^5.8.3"
+  }
+}
