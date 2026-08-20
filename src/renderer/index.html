@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>F1 Pedals</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="overlay" id="overlay">
+      <section class="telemetry" aria-label="Live pedal inputs">
+        <div class="pedals">
+          <article class="pedal pedal--throttle">
+            <div class="meter" role="meter" aria-label="Throttle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="meter-fill" id="throttleFill"></div>
+            </div>
+            <div class="pedal-value pedal-value--throttle"><span id="throttleValue">0</span><small>%</small></div>
+          </article>
+
+          <article class="pedal pedal--brake">
+            <div class="meter" role="meter" aria-label="Brake" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="meter-fill" id="brakeFill"></div>
+            </div>
+            <div class="pedal-value pedal-value--brake"><span id="brakeValue">0</span><small>%</small></div>
+          </article>
+        </div>
+
+        <section class="history" aria-label="Pedal input history">
+          <div class="chart-frame">
+            <canvas id="historyCanvas" aria-label="Six second throttle and brake input graph"></canvas>
+          </div>
+          <div class="speed"><span id="speedValue">0</span><small>km/h</small></div>
+        </section>
+      </section>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>
