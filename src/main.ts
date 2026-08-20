@@ -11,7 +11,7 @@ const UDP_PORT = Number.isInteger(requestedPort) && requestedPort > 0 && request
   : 20777;
 
 const OVERLAY_WIDTH = 460;
-const STEERING_GAUGE_WIDTH = 86;
+const STEERING_GAUGE_WIDTH = 141;
 const OVERLAY_HEIGHT = 150;
 
 let window: BrowserWindow | null = null;
@@ -83,12 +83,14 @@ function setSteeringEnabled(enabled: boolean): void {
     const bounds = window.getBounds();
     const nextWidth = OVERLAY_WIDTH + (steeringEnabled ? STEERING_GAUGE_WIDTH : 0);
     const widthDelta = nextWidth - bounds.width;
+    window.setResizable(true);
     window.setBounds({
       x: bounds.x - widthDelta,
       y: bounds.y,
       width: nextWidth,
       height: OVERLAY_HEIGHT
     });
+    window.setResizable(false);
     window.webContents.send("steering-changed", steeringEnabled);
   }
 }

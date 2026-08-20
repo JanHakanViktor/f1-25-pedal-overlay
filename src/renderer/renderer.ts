@@ -17,7 +17,7 @@ interface HistorySample {
 const HISTORY_DURATION_MS = 5000;
 const SAMPLE_INTERVAL_MS = 40;
 const MAX_STEERING_DEGREES = 180;
-const STEERING_MARKER_TRAVEL_PX = 24;
+const STEERING_MARKER_ARC_DEGREES = 90;
 const inputHistory: HistorySample[] = [];
 
 let shownThrottle = 0;
@@ -84,9 +84,9 @@ function render(now: number): void {
 function setSteering(input: number): void {
   const normalized = Math.min(1, Math.max(-1, input));
   const degrees = Math.round(normalized * MAX_STEERING_DEGREES);
-  const markerOffset = normalized * STEERING_MARKER_TRAVEL_PX;
+  const markerAngle = normalized * STEERING_MARKER_ARC_DEGREES;
 
-  steeringMarker.style.setProperty("--steer-offset", `${markerOffset}px`);
+  steeringMarker.style.setProperty("--steer-angle", `${markerAngle}deg`);
   steeringValue.textContent = `${degrees}°`;
   steeringDial.setAttribute("aria-valuenow", String(degrees));
 }
