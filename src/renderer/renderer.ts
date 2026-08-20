@@ -1,7 +1,5 @@
 const throttleFill = getElement<HTMLDivElement>("throttleFill");
 const brakeFill = getElement<HTMLDivElement>("brakeFill");
-const throttleValue = getElement<HTMLSpanElement>("throttleValue");
-const brakeValue = getElement<HTMLSpanElement>("brakeValue");
 const speedValue = getElement<HTMLSpanElement>("speedValue");
 const overlayElement = getElement<HTMLElement>("overlay");
 const historyCanvas = getElement<HTMLCanvasElement>("historyCanvas");
@@ -61,8 +59,8 @@ function render(now: number): void {
   shownBrake += (targetBrake - shownBrake) * 0.42;
   shownSpeed += (targetSpeed - shownSpeed) * 0.24;
 
-  setMeter(throttleFill, throttleValue, shownThrottle);
-  setMeter(brakeFill, brakeValue, shownBrake);
+  setMeter(throttleFill, shownThrottle);
+  setMeter(brakeFill, shownBrake);
   speedValue.textContent = String(Math.round(shownSpeed));
 
   if (now - lastSampleAt >= SAMPLE_INTERVAL_MS) {
@@ -124,10 +122,9 @@ function drawSignal(
   historyContext.shadowBlur = 0;
 }
 
-function setMeter(fill: HTMLDivElement, label: HTMLSpanElement, input: number): void {
+function setMeter(fill: HTMLDivElement, input: number): void {
   const percentage = Math.round(input * 100);
   fill.style.height = `${Math.min(100, Math.max(0, input * 100))}%`;
-  label.textContent = String(percentage);
   fill.parentElement?.setAttribute("aria-valuenow", String(percentage));
 }
 

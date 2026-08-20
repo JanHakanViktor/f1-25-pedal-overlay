@@ -50,8 +50,10 @@ body {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 30px;
 }
+
+.pedal { grid-template-rows: minmax(0, 1fr); }
+.history { grid-template-rows: minmax(0, 1fr) 30px; }
 
 .meter {
   position: relative;
@@ -86,22 +88,16 @@ body {
   box-shadow: 0 0 12px rgba(255, 66, 97, 0.24);
 }
 
-.pedal-value,
 .speed {
   display: flex;
   align-items: flex-end;
   justify-content: center;
   padding-bottom: 1px;
   font-variant-numeric: tabular-nums;
-  font-size: 19px;
   font-weight: 750;
   letter-spacing: -0.7px;
 }
 
-.pedal-value--throttle { color: var(--throttle); }
-.pedal-value--brake { color: var(--brake); }
-
-.pedal-value small,
 .speed small {
   margin: 0 0 2px 2px;
   color: #85909c;
