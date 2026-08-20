@@ -10,6 +10,13 @@
   <body>
     <main class="overlay" id="overlay">
       <section class="telemetry" aria-label="Live pedal inputs">
+        <aside class="steering" id="steeringGauge" aria-label="Steering angle" hidden>
+          <div class="steering-dial" role="meter" aria-valuemin="-180" aria-valuemax="180" aria-valuenow="0">
+            <div class="steering-marker" id="steeringMarker"></div>
+            <output class="steering-value" id="steeringValue">0°</output>
+          </div>
+        </aside>
+
         <section class="history" aria-label="Pedal input history">
           <div class="chart-frame">
             <canvas id="historyCanvas" aria-label="Six second throttle and brake input graph"></canvas>
