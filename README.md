@@ -2,6 +2,8 @@
 
 A compact, transparent Windows overlay for **EA SPORTS F1 25**. It displays solid throttle and brake bars alongside a scrolling six-second input graph.
 
+An optional steering gauge can be shown to the graph's left. The game reports steering as a normalized value, so the gauge maps full lock to `-180°` and `180°`.
+
 ## Run it
 
 1. Install [Node.js](https://nodejs.org/) 20 or newer.
@@ -10,6 +12,12 @@ A compact, transparent Windows overlay for **EA SPORTS F1 25**. It displays soli
    ```powershell
    npm install
    npm start
+   ```
+
+   To start with the steering gauge already visible, run:
+
+   ```powershell
+   npm run steering
    ```
 
 3. In F1 25, open **Settings → Telemetry Settings** and use:
@@ -38,6 +46,7 @@ npm start
 - `Ctrl+Shift+O` toggles lock/edit mode.
 - `Ctrl+Shift+H` hides or shows the overlay.
 - `Ctrl+Shift+D` toggles the built-in demo signal.
+- `Ctrl+Shift+S` toggles the steering gauge.
 - `Ctrl+Shift+Q` closes the overlay.
 
 ## Development
