@@ -30,9 +30,15 @@ export function parseF125Pedals(packet: Buffer, timestamp = Date.now()): PedalTe
   return {
     speedKph: packet.readUInt16LE(recordOffset),
     throttle: clampInput(packet.readFloatLE(recordOffset + 2)),
+    steering: clampSteering(packet.readFloatLE(recordOffset + 6)),
     brake: clampInput(packet.readFloatLE(brakeOffset)),
     timestamp
   };
+}
+
+function clampSteering(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(-1, value));
 }
 
 function clampInput(value: number): number {

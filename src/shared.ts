@@ -3,6 +3,7 @@ export type ConnectionState = "listening" | "connected" | "error";
 export interface PedalTelemetry {
   speedKph: number;
   throttle: number;
+  steering: number;
   brake: number;
   timestamp: number;
 }

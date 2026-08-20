@@ -17,7 +17,13 @@ let window: BrowserWindow | null = null;
 let locked = false;
 let demoEnabled = false;
 let demoTimer: NodeJS.Timeout | null = null;
-let lastTelemetry: PedalTelemetry = { speedKph: 0, throttle: 0, brake: 0, timestamp: 0 };
+let lastTelemetry: PedalTelemetry = {
+  speedKph: 0,
+  throttle: 0,
+  steering: 0,
+  brake: 0,
+  timestamp: 0
+};
 let lastStatus: OverlayStatus = {
   state: "listening",
   message: `Waiting on UDP ${UDP_PORT}`,
@@ -84,10 +90,11 @@ function setDemoEnabled(enabled: boolean): void {
     demoTimer = setInterval(() => {
       const seconds = (Date.now() - startedAt) / 1000;
       const throttle = Math.max(0, Math.min(1, 0.64 + Math.sin(seconds * 1.7) * 0.36));
+      const steering = Math.sin(seconds * 0.9) * 0.85;
       const brakePulse = Math.sin(seconds * 0.82);
       const brake = brakePulse > 0.63 ? Math.min(1, (brakePulse - 0.63) * 2.8) : 0;
       const speedKph = Math.round(Math.max(0, 110 + throttle * 210 - brake * 95));
-      sendTelemetry({ speedKph, throttle, brake, timestamp: Date.now() });
+      sendTelemetry({ speedKph, throttle, steering, brake, timestamp: Date.now() });
     }, 16);
   }
 

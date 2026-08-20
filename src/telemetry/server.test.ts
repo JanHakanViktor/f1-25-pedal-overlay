@@ -21,6 +21,7 @@ test("receives and parses an F1 25 telemetry datagram", async (context) => {
   packet.writeUInt8(0, 27);
   packet.writeUInt16LE(301, PACKET_HEADER_SIZE);
   packet.writeFloatLE(0.72, PACKET_HEADER_SIZE + 2);
+  packet.writeFloatLE(-0.25, PACKET_HEADER_SIZE + 6);
   packet.writeFloatLE(0.31, PACKET_HEADER_SIZE + 10);
 
   const received = once(server, "telemetry");
@@ -33,5 +34,6 @@ test("receives and parses an F1 25 telemetry datagram", async (context) => {
   const [telemetry] = await received;
   assert.equal(telemetry.speedKph, 301);
   assert.ok(Math.abs(telemetry.throttle - 0.72) < 0.0001);
+  assert.ok(Math.abs(telemetry.steering - -0.25) < 0.0001);
   assert.ok(Math.abs(telemetry.brake - 0.31) < 0.0001);
 });
