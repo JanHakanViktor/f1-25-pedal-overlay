@@ -10,6 +10,13 @@
   <body>
     <main class="overlay" id="overlay">
       <section class="telemetry" aria-label="Live pedal inputs">
+        <section class="history" aria-label="Pedal input history">
+          <div class="chart-frame">
+            <canvas id="historyCanvas" aria-label="Six second throttle and brake input graph"></canvas>
+          </div>
+          <div class="speed"><span id="speedValue">0</span><small>km/h</small></div>
+        </section>
+
         <div class="pedals">
           <article class="pedal pedal--throttle">
             <div class="meter" role="meter" aria-label="Throttle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -25,13 +32,6 @@
             <div class="pedal-value pedal-value--brake"><span id="brakeValue">0</span><small>%</small></div>
           </article>
         </div>
-
-        <section class="history" aria-label="Pedal input history">
-          <div class="chart-frame">
-            <canvas id="historyCanvas" aria-label="Six second throttle and brake input graph"></canvas>
-          </div>
-          <div class="speed"><span id="speedValue">0</span><small>km/h</small></div>
-        </section>
       </section>
     </main>
     <script src="renderer.js"></script>

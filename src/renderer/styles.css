@@ -34,7 +34,7 @@ body {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 104px;
   gap: 12px;
 }
 
