@@ -8,6 +8,7 @@
     "clean": "node scripts/clean.mjs",
     "build": "npm run clean && tsc && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
+    "steering": "npm run build && electron . --steering",
     "dev": "npm run start",
     "test": "npm run build && node --test dist/**/*.test.js"
   },

@@ -18,6 +18,7 @@ let window: BrowserWindow | null = null;
 let locked = false;
 let demoEnabled = false;
 let steeringEnabled = app.commandLine.hasSwitch("steering")
+  || process.argv.includes("--steering")
   || process.env.F1_OVERLAY_STEERING === "1";
 let demoTimer: NodeJS.Timeout | null = null;
 let lastTelemetry: PedalTelemetry = {
