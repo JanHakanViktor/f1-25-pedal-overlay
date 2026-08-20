@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from "electron";
 import path from "node:path";
 import { TelemetryServer } from "./telemetry/server";
-import type { OverlayStatus, PedalTelemetry } from "./shared";
+import type { OverlaySnapshot, OverlayStatus, PedalTelemetry } from "./shared";
 
 const requestedPort = Number.parseInt(process.env.F1_UDP_PORT ?? "20777", 10);
 const UDP_PORT = Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535
@@ -15,6 +15,7 @@ let window: BrowserWindow | null = null;
 let locked = false;
 let demoEnabled = false;
 let demoTimer: NodeJS.Timeout | null = null;
+let lastTelemetry: PedalTelemetry = { speedKph: 0, throttle: 0, brake: 0, timestamp: 0 };
 let lastStatus: OverlayStatus = {
   state: "listening",
   message: `Waiting on UDP ${UDP_PORT}`,
@@ -67,6 +68,7 @@ function setLocked(nextLocked: boolean): void {
 }
 
 function sendTelemetry(telemetry: PedalTelemetry): void {
+  lastTelemetry = telemetry;
   window?.webContents.send("telemetry", telemetry);
 }
 
@@ -120,6 +122,14 @@ ipcMain.on("set-locked", (_event, nextLocked: unknown) => {
 });
 ipcMain.on("close-overlay", () => app.quit());
 ipcMain.on("toggle-demo", () => setDemoEnabled(!demoEnabled));
+ipcMain.handle("get-snapshot", (): OverlaySnapshot => ({
+  telemetry: lastTelemetry,
+  status: demoEnabled
+    ? { state: "connected", message: "Demo signal", port: UDP_PORT }
+    : lastStatus,
+  locked,
+  demoEnabled
+}));
 
 app.on("will-quit", () => {
   telemetryServer.stop();
