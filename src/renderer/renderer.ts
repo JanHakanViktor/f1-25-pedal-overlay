@@ -17,16 +17,19 @@ interface HistorySample {
   brakeLockup: BrakeLockup;
 }
 
-const HISTORY_DURATION_MS = 5000;
 const SAMPLE_INTERVAL_MS = 40;
 const MAX_STEERING_DEGREES = 180;
 const STEERING_MARKER_ARC_DEGREES = 90;
 const THROTTLE_COLOR = "#42e37c";
 const BRAKE_COLOR = "#ff4261";
-const FRONT_LOCKUP_COLOR = "#ffd84a";
-const REAR_LOCKUP_COLOR = "#ff8a2a";
-const BOTH_LOCKUP_COLOR = "#8f1525";
 const inputHistory: HistorySample[] = [];
+
+let historyDurationMs = 5000;
+let lockupColorMode: "axle" | "single" = "axle";
+let frontLockupColor = "#ffd84a";
+let rearLockupColor = "#ff8a2a";
+let bothLockupColor = "#8f1525";
+let singleLockupColor = "#ffd84a";
 
 let shownThrottle = 0;
 let shownBrake = 0;
@@ -61,6 +64,7 @@ async function refreshSnapshot(): Promise<void> {
     targetBrake = snapshot.telemetry.brake;
     targetSteering = snapshot.telemetry.steering;
     targetBrakeLockup = snapshot.telemetry.brakeLockup;
+    applySettings(snapshot.settings);
     overlayElement.classList.toggle("is-locked", snapshot.locked);
     overlayElement.classList.toggle("has-steering", snapshot.steeringEnabled);
     steeringGauge.hidden = !snapshot.steeringEnabled;
@@ -91,7 +95,7 @@ function render(now: number): void {
     lastSampleAt = now;
   }
 
-  const cutoff = now - HISTORY_DURATION_MS;
+  const cutoff = now - historyDurationMs;
   while (inputHistory.length > 1 && inputHistory[1].time < cutoff) inputHistory.shift();
   drawHistory(now);
   requestAnimationFrame(render);
@@ -136,10 +140,10 @@ function drawSignal(
 ): void {
   if (!historyContext || inputHistory.length === 0) return;
 
-  const cutoff = now - HISTORY_DURATION_MS;
+  const cutoff = now - historyDurationMs;
   historyContext.beginPath();
   inputHistory.forEach((sample, index) => {
-    const x = Math.max(0, ((sample.time - cutoff) / HISTORY_DURATION_MS) * width);
+    const x = Math.max(0, ((sample.time - cutoff) / historyDurationMs) * width);
     const y = 2 + (1 - sample[input]) * (height - 4);
     if (index === 0) historyContext.moveTo(x, y);
     else historyContext.lineTo(x, y);
@@ -151,9 +155,9 @@ function drawSignal(
 function drawBrakeSignal(now: number, width: number, height: number): void {
   if (!historyContext || inputHistory.length === 0) return;
 
-  const cutoff = now - HISTORY_DURATION_MS;
+  const cutoff = now - historyDurationMs;
   const pointFor = (sample: HistorySample) => ({
-    x: Math.max(0, ((sample.time - cutoff) / HISTORY_DURATION_MS) * width),
+    x: Math.max(0, ((sample.time - cutoff) / historyDurationMs) * width),
     y: 2 + (1 - sample.brake) * (height - 4)
   });
 
@@ -183,10 +187,21 @@ function drawBrakeSignal(now: number, width: number, height: number): void {
 }
 
 function brakeColorFor(lockup: BrakeLockup): string {
-  if (lockup === "front") return FRONT_LOCKUP_COLOR;
-  if (lockup === "rear") return REAR_LOCKUP_COLOR;
-  if (lockup === "both") return BOTH_LOCKUP_COLOR;
+  if (lockup !== "none" && lockupColorMode === "single") return singleLockupColor;
+  if (lockup === "front") return frontLockupColor;
+  if (lockup === "rear") return rearLockupColor;
+  if (lockup === "both") return bothLockupColor;
   return BRAKE_COLOR;
+}
+
+function applySettings(settings: Awaited<ReturnType<typeof window.overlay.getSnapshot>>["settings"]): void {
+  historyDurationMs = settings.graphDurationSeconds * 1000;
+  lockupColorMode = settings.lockupColorMode;
+  frontLockupColor = settings.lockupColors.front;
+  rearLockupColor = settings.lockupColors.rear;
+  bothLockupColor = settings.lockupColors.both;
+  singleLockupColor = settings.lockupColors.single;
+  overlayElement.style.setProperty("--overlay-opacity", String(settings.overlayTransparency));
 }
 
 function strokeHistoryPath(color: string): void {

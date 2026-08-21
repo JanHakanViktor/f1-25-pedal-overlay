@@ -1,5 +1,38 @@
 export type ConnectionState = "listening" | "connected" | "error";
 export type BrakeLockup = "none" | "front" | "rear" | "both";
+export type LockupColorMode = "axle" | "single";
+
+export interface ShortcutSettings {
+  toggleVisibility: string;
+  toggleLock: string;
+  toggleDemo: string;
+  toggleSteering: string;
+  quit: string;
+}
+
+export interface LockupColorSettings {
+  front: string;
+  rear: string;
+  both: string;
+  single: string;
+}
+
+export interface AppSettings {
+  steeringEnabledByDefault: boolean;
+  overlayTransparency: number;
+  udpPort: number;
+  lockupSensitivity: number;
+  graphDurationSeconds: number;
+  shortcuts: ShortcutSettings;
+  lockupColorMode: LockupColorMode;
+  lockupColors: LockupColorSettings;
+}
+
+export interface SaveSettingsResult {
+  ok: boolean;
+  settings?: AppSettings;
+  error?: string;
+}
 
 export interface PedalTelemetry {
   speedKph: number;
@@ -22,6 +55,7 @@ export interface OverlaySnapshot {
   locked: boolean;
   demoEnabled: boolean;
   steeringEnabled: boolean;
+  settings: AppSettings;
 }
 
 export interface OverlayApi {
@@ -32,5 +66,11 @@ export interface OverlayApi {
   getSnapshot: () => Promise<OverlaySnapshot>;
   setLocked: (locked: boolean) => void;
   toggleDemo: () => void;
+  close: () => void;
+}
+
+export interface SettingsApi {
+  getSettings: () => Promise<AppSettings>;
+  saveSettings: (settings: AppSettings) => Promise<SaveSettingsResult>;
   close: () => void;
 }

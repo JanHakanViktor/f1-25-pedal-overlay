@@ -4,8 +4,7 @@ import type { BrakeLockup, OverlayStatus, PedalTelemetry } from "../shared";
 import { parseF125Pedals, parseF125WheelMotion } from "./parser";
 
 const MOTION_MAX_AGE_MS = 150;
-const LOCKUP_ENTER_SLIP_RATIO = -0.35;
-const LOCKUP_EXIT_SLIP_RATIO = -0.18;
+const DEFAULT_LOCKUP_SENSITIVITY = 0.35;
 
 export interface TelemetryServerEvents {
   telemetry: [PedalTelemetry];
@@ -20,9 +19,15 @@ export class TelemetryServer extends EventEmitter<TelemetryServerEvents> {
   private lastWheelMotionAt = 0;
   private frontBrakeLockup = false;
   private rearBrakeLockup = false;
+  private lockupSensitivity = DEFAULT_LOCKUP_SENSITIVITY;
 
   constructor(private readonly port = 20777) {
     super();
+  }
+
+  setLockupSensitivity(value: number): void {
+    if (!Number.isFinite(value)) return;
+    this.lockupSensitivity = Math.min(0.9, Math.max(0.15, value));
   }
 
   start(): void {
@@ -108,7 +113,9 @@ export class TelemetryServer extends EventEmitter<TelemetryServerEvents> {
   }
 
   private axleIsLocked(slipRatio: number, wasLocked: boolean): boolean {
-    const threshold = wasLocked ? LOCKUP_EXIT_SLIP_RATIO : LOCKUP_ENTER_SLIP_RATIO;
+    const enterThreshold = -this.lockupSensitivity;
+    const exitThreshold = -Math.max(0.08, this.lockupSensitivity * 0.52);
+    const threshold = wasLocked ? exitThreshold : enterThreshold;
     return slipRatio <= threshold;
   }
 

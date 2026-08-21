@@ -1,52 +1,54 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen } from "electron";
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  screen,
+  Tray
+} from "electron";
 import path from "node:path";
+import { DEFAULT_SETTINGS, sanitizeSettings, SettingsStore } from "./config";
+import type {
+  AppSettings,
+  OverlaySnapshot,
+  OverlayStatus,
+  PedalTelemetry,
+  SaveSettingsResult,
+  ShortcutSettings
+} from "./shared";
 import { TelemetryServer } from "./telemetry/server";
-import type { OverlaySnapshot, OverlayStatus, PedalTelemetry } from "./shared";
-
-const portArgument = app.commandLine.getSwitchValue("udp-port")
-  || process.argv.find((argument) => argument.startsWith("--udp-port="))?.split("=")[1];
-const requestedPort = Number.parseInt(portArgument ?? process.env.F1_UDP_PORT ?? "20777", 10);
-const UDP_PORT = Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535
-  ? requestedPort
-  : 20777;
 
 const OVERLAY_WIDTH = 460;
 const STEERING_GAUGE_WIDTH = 141;
 const OVERLAY_HEIGHT = 150;
 
-let window: BrowserWindow | null = null;
+let overlayWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let settingsStore: SettingsStore | null = null;
+let settings: AppSettings = structuredClone(DEFAULT_SETTINGS);
+let telemetryServer: TelemetryServer | null = null;
+let udpPort = DEFAULT_SETTINGS.udpPort;
 let locked = false;
 let demoEnabled = false;
-let steeringEnabled = app.commandLine.hasSwitch("steering")
-  || process.argv.includes("--steering")
-  || process.env.F1_OVERLAY_STEERING === "1";
+let steeringEnabled = false;
 let demoTimer: NodeJS.Timeout | null = null;
-let lastTelemetry: PedalTelemetry = {
-  speedKph: 0,
-  throttle: 0,
-  steering: 0,
-  brake: 0,
-  brakeLockup: "none",
-  timestamp: 0
-};
-let lastStatus: OverlayStatus = {
-  state: "listening",
-  message: `Waiting on UDP ${UDP_PORT}`,
-  port: UDP_PORT
-};
-const telemetryServer = new TelemetryServer(UDP_PORT);
+let lastTelemetry: PedalTelemetry = emptyTelemetry();
+let lastStatus: OverlayStatus = waitingStatus(udpPort);
 
-function createWindow(): void {
+function createOverlayWindow(): void {
   const workArea = screen.getPrimaryDisplay().workArea;
   const windowWidth = OVERLAY_WIDTH + (steeringEnabled ? STEERING_GAUGE_WIDTH : 0);
 
-  window = new BrowserWindow({
+  overlayWindow = new BrowserWindow({
     width: windowWidth,
     height: OVERLAY_HEIGHT,
     x: workArea.x + workArea.width - windowWidth - 40,
     y: workArea.y + Math.round((workArea.height - OVERLAY_HEIGHT) / 2),
     transparent: true,
     frame: false,
+    skipTaskbar: true,
     resizable: false,
     alwaysOnTop: true,
     hasShadow: false,
@@ -59,52 +61,130 @@ function createWindow(): void {
     }
   });
 
-  window.setAlwaysOnTop(true, "screen-saver");
-  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  window.loadFile(path.join(__dirname, "renderer", "index.html"));
-  window.webContents.on("did-finish-load", () => {
-    window?.webContents.send("lock-changed", locked);
-    window?.webContents.send("demo-changed", demoEnabled);
-    window?.webContents.send("steering-changed", steeringEnabled);
-    window?.webContents.send("status", demoEnabled
-      ? { state: "connected", message: "Demo signal", port: UDP_PORT }
-      : lastStatus
-    );
+  overlayWindow.setAlwaysOnTop(true, "screen-saver");
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  void overlayWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+  overlayWindow.webContents.on("did-finish-load", () => {
+    overlayWindow?.webContents.send("lock-changed", locked);
+    overlayWindow?.webContents.send("demo-changed", demoEnabled);
+    overlayWindow?.webContents.send("steering-changed", steeringEnabled);
+    overlayWindow?.webContents.send("status", currentStatus());
   });
-  window.on("closed", () => {
-    window = null;
+  overlayWindow.on("show", refreshTrayMenu);
+  overlayWindow.on("hide", refreshTrayMenu);
+  overlayWindow.on("closed", () => {
+    overlayWindow = null;
+    refreshTrayMenu();
   });
+}
+
+function openSettingsWindow(): void {
+  if (settingsWindow) {
+    settingsWindow.show();
+    settingsWindow.focus();
+    return;
+  }
+
+  const workArea = screen.getPrimaryDisplay().workArea;
+  settingsWindow = new BrowserWindow({
+    width: 700,
+    height: Math.min(820, workArea.height - 60),
+    minWidth: 540,
+    minHeight: 620,
+    title: "F1 25 Pedal Overlay Settings",
+    autoHideMenuBar: true,
+    backgroundColor: "#090b0e",
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "settingsPreload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  void settingsWindow.loadFile(path.join(__dirname, "settings", "index.html"));
+  settingsWindow.once("ready-to-show", () => settingsWindow?.show());
+  settingsWindow.on("closed", () => {
+    settingsWindow = null;
+  });
+}
+
+async function createTray(): Promise<void> {
+  const icon = await app.getFileIcon(process.execPath, { size: "small" });
+  tray = new Tray(icon);
+  tray.setToolTip("F1 25 Pedal Overlay");
+  refreshTrayMenu();
+}
+
+function refreshTrayMenu(): void {
+  if (!tray) return;
+
+  const overlayVisible = overlayWindow?.isVisible() ?? false;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Settings", click: openSettingsWindow },
+    {
+      label: overlayVisible ? "Hide overlay" : "Show overlay",
+      accelerator: settings.shortcuts.toggleVisibility,
+      click: toggleOverlayVisibility
+    },
+    {
+      label: locked ? "Unlock position" : "Lock position",
+      accelerator: settings.shortcuts.toggleLock,
+      click: () => setLocked(!locked)
+    },
+    {
+      label: "Enable steering",
+      type: "checkbox",
+      checked: steeringEnabled,
+      accelerator: settings.shortcuts.toggleSteering,
+      click: (item) => setSteeringEnabled(item.checked)
+    },
+    { type: "separator" },
+    { label: "Exit", accelerator: settings.shortcuts.quit, click: () => app.quit() }
+  ]));
+}
+
+function toggleOverlayVisibility(): void {
+  if (!overlayWindow) {
+    createOverlayWindow();
+    return;
+  }
+  overlayWindow.isVisible() ? overlayWindow.hide() : overlayWindow.showInactive();
+  refreshTrayMenu();
 }
 
 function setSteeringEnabled(enabled: boolean): void {
   if (steeringEnabled === enabled) return;
   steeringEnabled = enabled;
 
-  if (window) {
-    const bounds = window.getBounds();
+  if (overlayWindow) {
+    const bounds = overlayWindow.getBounds();
     const nextWidth = OVERLAY_WIDTH + (steeringEnabled ? STEERING_GAUGE_WIDTH : 0);
     const widthDelta = nextWidth - bounds.width;
-    window.setResizable(true);
-    window.setBounds({
+    overlayWindow.setResizable(true);
+    overlayWindow.setBounds({
       x: bounds.x - widthDelta,
       y: bounds.y,
       width: nextWidth,
       height: OVERLAY_HEIGHT
     });
-    window.setResizable(false);
-    window.webContents.send("steering-changed", steeringEnabled);
+    overlayWindow.setResizable(false);
+    overlayWindow.webContents.send("steering-changed", steeringEnabled);
   }
+  refreshTrayMenu();
 }
 
 function setLocked(nextLocked: boolean): void {
   locked = nextLocked;
-  window?.setIgnoreMouseEvents(locked, { forward: true });
-  window?.webContents.send("lock-changed", locked);
+  overlayWindow?.setIgnoreMouseEvents(locked, { forward: true });
+  overlayWindow?.webContents.send("lock-changed", locked);
+  refreshTrayMenu();
 }
 
 function sendTelemetry(telemetry: PedalTelemetry): void {
   lastTelemetry = telemetry;
-  window?.webContents.send("telemetry", telemetry);
+  overlayWindow?.webContents.send("telemetry", telemetry);
 }
 
 function setDemoEnabled(enabled: boolean): void {
@@ -133,56 +213,169 @@ function setDemoEnabled(enabled: boolean): void {
     }, 16);
   }
 
-  window?.webContents.send("demo-changed", enabled);
-  window?.webContents.send("status", enabled
-    ? { state: "connected", message: "Demo signal", port: UDP_PORT }
-    : lastStatus
-  );
+  overlayWindow?.webContents.send("demo-changed", enabled);
+  overlayWindow?.webContents.send("status", currentStatus());
 }
 
-telemetryServer.on("telemetry", (telemetry) => {
-  if (!demoEnabled) sendTelemetry(telemetry);
-});
+function startTelemetryServer(nextPort: number): void {
+  telemetryServer?.stop();
+  udpPort = nextPort;
+  lastStatus = waitingStatus(udpPort);
 
-telemetryServer.on("status", (status) => {
-  lastStatus = status;
-  if (!demoEnabled) window?.webContents.send("status", status);
-});
-
-app.whenReady().then(() => {
-  createWindow();
-  telemetryServer.start();
-  if (app.commandLine.hasSwitch("demo") || process.env.F1_OVERLAY_DEMO === "1") {
-    setDemoEnabled(true);
-  }
-  globalShortcut.register("CommandOrControl+Shift+O", () => setLocked(!locked));
-  globalShortcut.register("CommandOrControl+Shift+H", () => {
-    if (!window) return;
-    window.isVisible() ? window.hide() : window.showInactive();
+  const server = new TelemetryServer(udpPort);
+  server.setLockupSensitivity(settings.lockupSensitivity);
+  server.on("telemetry", (telemetry) => {
+    if (!demoEnabled) sendTelemetry(telemetry);
   });
-  globalShortcut.register("CommandOrControl+Shift+Q", () => app.quit());
-  globalShortcut.register("CommandOrControl+Shift+D", () => setDemoEnabled(!demoEnabled));
-  globalShortcut.register("CommandOrControl+Shift+S", () => setSteeringEnabled(!steeringEnabled));
-});
+  server.on("status", (status) => {
+    lastStatus = status;
+    if (!demoEnabled) overlayWindow?.webContents.send("status", status);
+  });
+  telemetryServer = server;
+  server.start();
+}
+
+function registerShortcutSet(shortcuts: ShortcutSettings): string | null {
+  const entries: Array<[string, () => void]> = [
+    [shortcuts.toggleVisibility, toggleOverlayVisibility],
+    [shortcuts.toggleLock, () => setLocked(!locked)],
+    [shortcuts.toggleDemo, () => setDemoEnabled(!demoEnabled)],
+    [shortcuts.toggleSteering, () => setSteeringEnabled(!steeringEnabled)],
+    [shortcuts.quit, () => app.quit()]
+  ];
+
+  const normalized = entries.map(([accelerator]) => accelerator.replaceAll(" ", "").toLowerCase());
+  if (new Set(normalized).size !== normalized.length) return "Every shortcut must be unique.";
+
+  globalShortcut.unregisterAll();
+  try {
+    for (const [accelerator, callback] of entries) {
+      if (!globalShortcut.register(accelerator, callback)) {
+        globalShortcut.unregisterAll();
+        return `The shortcut ${accelerator} is already used by another application.`;
+      }
+    }
+  } catch {
+    globalShortcut.unregisterAll();
+    return "One or more shortcuts use an invalid format.";
+  }
+  return null;
+}
+
+function saveSettings(value: unknown): SaveSettingsResult {
+  if (!settingsStore) return { ok: false, error: "Settings are not ready yet." };
+
+  const candidate = sanitizeSettings(value);
+  const shortcutError = registerShortcutSet(candidate.shortcuts);
+  if (shortcutError) {
+    registerShortcutSet(settings.shortcuts);
+    return { ok: false, error: shortcutError };
+  }
+
+  const previousSettings = settings;
+  try {
+    settings = settingsStore.save(candidate);
+  } catch {
+    registerShortcutSet(previousSettings.shortcuts);
+    return { ok: false, error: "Windows could not write the settings file." };
+  }
+
+  telemetryServer?.setLockupSensitivity(settings.lockupSensitivity);
+  if (settings.udpPort !== udpPort) startTelemetryServer(settings.udpPort);
+  refreshTrayMenu();
+  return { ok: true, settings };
+}
+
+function resolveUdpPort(): number {
+  const portArgument = app.commandLine.getSwitchValue("udp-port")
+    || process.argv.find((argument) => argument.startsWith("--udp-port="))?.split("=")[1];
+  const requested = Number.parseInt(portArgument ?? process.env.F1_UDP_PORT ?? "", 10);
+  return Number.isInteger(requested) && requested > 0 && requested <= 65535
+    ? requested
+    : settings.udpPort;
+}
+
+function currentStatus(): OverlayStatus {
+  return demoEnabled
+    ? { state: "connected", message: "Demo signal", port: udpPort }
+    : lastStatus;
+}
+
+function waitingStatus(port: number): OverlayStatus {
+  return { state: "listening", message: `Waiting on UDP ${port}`, port };
+}
+
+function emptyTelemetry(): PedalTelemetry {
+  return {
+    speedKph: 0,
+    throttle: 0,
+    steering: 0,
+    brake: 0,
+    brakeLockup: "none",
+    timestamp: 0
+  };
+}
 
 ipcMain.on("set-locked", (_event, nextLocked: unknown) => {
   if (typeof nextLocked === "boolean") setLocked(nextLocked);
 });
 ipcMain.on("close-overlay", () => app.quit());
 ipcMain.on("toggle-demo", () => setDemoEnabled(!demoEnabled));
+ipcMain.on("settings:close", () => settingsWindow?.close());
+ipcMain.handle("settings:get", () => settings);
+ipcMain.handle("settings:save", (_event, value: unknown) => saveSettings(value));
 ipcMain.handle("get-snapshot", (): OverlaySnapshot => ({
   telemetry: lastTelemetry,
-  status: demoEnabled
-    ? { state: "connected", message: "Demo signal", port: UDP_PORT }
-    : lastStatus,
+  status: currentStatus(),
   locked,
   demoEnabled,
-  steeringEnabled
+  steeringEnabled,
+  settings
 }));
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!overlayWindow) createOverlayWindow();
+    overlayWindow?.showInactive();
+  });
+
+  app.whenReady().then(async () => {
+    app.setAppUserModelId("com.janhakanviktor.f125pedaloverlay");
+    settingsStore = new SettingsStore(path.join(app.getPath("userData"), "settings.json"));
+    settings = settingsStore.load();
+    udpPort = resolveUdpPort();
+    steeringEnabled = app.commandLine.hasSwitch("steering")
+      || process.argv.includes("--steering")
+      || process.env.F1_OVERLAY_STEERING === "1"
+      || settings.steeringEnabledByDefault;
+
+    createOverlayWindow();
+    await createTray();
+    startTelemetryServer(udpPort);
+
+    const shortcutError = registerShortcutSet(settings.shortcuts);
+    if (shortcutError) {
+      settings = settingsStore.save({ ...settings, shortcuts: DEFAULT_SETTINGS.shortcuts });
+      registerShortcutSet(settings.shortcuts);
+    }
+
+    if (app.commandLine.hasSwitch("demo") || process.env.F1_OVERLAY_DEMO === "1") {
+      setDemoEnabled(true);
+    }
+  });
+}
+
+app.on("activate", () => {
+  if (!overlayWindow) createOverlayWindow();
+  overlayWindow?.showInactive();
+});
+
 app.on("will-quit", () => {
-  telemetryServer.stop();
+  telemetryServer?.stop();
   globalShortcut.unregisterAll();
   if (demoTimer) clearInterval(demoTimer);
+  tray?.destroy();
 });
-app.on("window-all-closed", () => app.quit());
