@@ -1,7 +1,7 @@
 {
   "name": "f1-25-pedal-overlay",
   "productName": "F1 25 Pedal Overlay",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Transparent throttle and brake input overlay for EA SPORTS F1 25",
   "author": "JanHakanViktor",
