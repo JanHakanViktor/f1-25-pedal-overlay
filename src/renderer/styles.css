@@ -27,8 +27,11 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 9px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34);
-  -webkit-app-region: drag;
+  cursor: move;
+  touch-action: none;
 }
+
+.overlay.is-locked { cursor: default; }
 
 .overlay.has-steering {
   border-top-left-radius: 50vh;

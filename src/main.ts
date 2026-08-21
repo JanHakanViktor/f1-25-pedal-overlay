@@ -5,7 +5,8 @@ import {
   ipcMain,
   Menu,
   screen,
-  Tray
+  Tray,
+  type MenuItemConstructorOptions
 } from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 import path from "node:path";
@@ -41,6 +42,12 @@ let steeringEnabled = false;
 let demoTimer: NodeJS.Timeout | null = null;
 let lastTelemetry: PedalTelemetry = emptyTelemetry();
 let lastStatus: OverlayStatus = waitingStatus(udpPort);
+let overlayDrag: {
+  pointerX: number;
+  pointerY: number;
+  windowX: number;
+  windowY: number;
+} | null = null;
 
 function createOverlayWindow(): void {
   const workArea = screen.getPrimaryDisplay().workArea;
@@ -79,6 +86,7 @@ function createOverlayWindow(): void {
   overlayWindow.on("hide", refreshTrayMenu);
   overlayWindow.on("closed", () => {
     overlayWindow = null;
+    overlayDrag = null;
     refreshTrayMenu();
   });
 }
@@ -124,9 +132,12 @@ async function createTray(): Promise<void> {
 
 function refreshTrayMenu(): void {
   if (!tray) return;
+  tray.setContextMenu(buildControlMenu());
+}
 
+function buildControlMenu(): Menu {
   const overlayVisible = overlayWindow?.isVisible() ?? false;
-  tray.setContextMenu(Menu.buildFromTemplate([
+  const template: MenuItemConstructorOptions[] = [
     { label: "Settings", click: openSettingsWindow },
     {
       label: overlayVisible ? "Hide overlay" : "Show overlay",
@@ -147,7 +158,8 @@ function refreshTrayMenu(): void {
     },
     { type: "separator" },
     { label: "Exit", accelerator: settings.shortcuts.quit, click: () => app.quit() }
-  ]));
+  ];
+  return Menu.buildFromTemplate(template);
 }
 
 function toggleOverlayVisibility(): void {
@@ -182,7 +194,7 @@ function setSteeringEnabled(enabled: boolean): void {
 
 function setLocked(nextLocked: boolean): void {
   locked = nextLocked;
-  overlayWindow?.setIgnoreMouseEvents(locked, { forward: true });
+  if (locked) overlayDrag = null;
   overlayWindow?.webContents.send("lock-changed", locked);
   refreshTrayMenu();
 }
@@ -324,6 +336,39 @@ function emptyTelemetry(): PedalTelemetry {
 ipcMain.on("set-locked", (_event, nextLocked: unknown) => {
   if (typeof nextLocked === "boolean") setLocked(nextLocked);
 });
+ipcMain.on("overlay:drag-start", (event, position: unknown) => {
+  if (locked || !overlayWindow || event.sender !== overlayWindow.webContents || !isScreenPosition(position)) {
+    return;
+  }
+
+  const [windowX, windowY] = overlayWindow.getPosition();
+  overlayDrag = {
+    pointerX: position.screenX,
+    pointerY: position.screenY,
+    windowX,
+    windowY
+  };
+});
+ipcMain.on("overlay:drag-move", (event, position: unknown) => {
+  if (locked || !overlayWindow || event.sender !== overlayWindow.webContents
+    || !overlayDrag || !isScreenPosition(position)) {
+    return;
+  }
+
+  overlayWindow.setPosition(
+    Math.round(overlayDrag.windowX + position.screenX - overlayDrag.pointerX),
+    Math.round(overlayDrag.windowY + position.screenY - overlayDrag.pointerY),
+    false
+  );
+});
+ipcMain.on("overlay:drag-end", (event) => {
+  if (overlayWindow && event.sender === overlayWindow.webContents) overlayDrag = null;
+});
+ipcMain.on("overlay:show-context-menu", (event) => {
+  if (overlayWindow && event.sender === overlayWindow.webContents) {
+    buildControlMenu().popup({ window: overlayWindow });
+  }
+});
 ipcMain.on("close-overlay", () => app.quit());
 ipcMain.on("toggle-demo", () => setDemoEnabled(!demoEnabled));
 ipcMain.on("settings:close", () => settingsWindow?.close());
@@ -337,6 +382,13 @@ ipcMain.handle("get-snapshot", (): OverlaySnapshot => ({
   steeringEnabled,
   settings
 }));
+
+function isScreenPosition(value: unknown): value is { screenX: number; screenY: number } {
+  if (typeof value !== "object" || value === null) return false;
+  const position = value as Record<string, unknown>;
+  return typeof position.screenX === "number" && Number.isFinite(position.screenX)
+    && typeof position.screenY === "number" && Number.isFinite(position.screenY);
+}
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {

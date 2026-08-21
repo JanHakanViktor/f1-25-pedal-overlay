@@ -40,6 +40,8 @@ let targetSteering = 0;
 let targetBrakeLockup: BrakeLockup = "none";
 let lastSampleAt = -SAMPLE_INTERVAL_MS;
 let snapshotPending = false;
+let locked = false;
+let dragPointerId: number | null = null;
 
 window.overlay.onTelemetry((telemetry) => {
   targetThrottle = telemetry.throttle;
@@ -48,9 +50,30 @@ window.overlay.onTelemetry((telemetry) => {
   targetBrakeLockup = telemetry.brakeLockup;
 });
 
-window.overlay.onLockChanged((locked) => {
-  overlayElement.classList.toggle("is-locked", locked);
+window.overlay.onLockChanged((nextLocked) => {
+  applyLockedState(nextLocked);
 });
+
+overlayElement.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 || locked) return;
+  dragPointerId = event.pointerId;
+  overlayElement.setPointerCapture(event.pointerId);
+  window.overlay.startDrag(event.screenX, event.screenY);
+  event.preventDefault();
+});
+
+overlayElement.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== dragPointerId) return;
+  window.overlay.moveDrag(event.screenX, event.screenY);
+});
+
+overlayElement.addEventListener("pointerup", finishOverlayDrag);
+overlayElement.addEventListener("pointercancel", finishOverlayDrag);
+overlayElement.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  window.overlay.showContextMenu();
+});
+window.addEventListener("blur", () => finishOverlayDrag());
 
 setInterval(() => void refreshSnapshot(), 50);
 void refreshSnapshot();
@@ -65,7 +88,7 @@ async function refreshSnapshot(): Promise<void> {
     targetSteering = snapshot.telemetry.steering;
     targetBrakeLockup = snapshot.telemetry.brakeLockup;
     applySettings(snapshot.settings);
-    overlayElement.classList.toggle("is-locked", snapshot.locked);
+    applyLockedState(snapshot.locked);
     overlayElement.classList.toggle("has-steering", snapshot.steeringEnabled);
     steeringGauge.hidden = !snapshot.steeringEnabled;
   } catch {
@@ -73,6 +96,21 @@ async function refreshSnapshot(): Promise<void> {
   } finally {
     snapshotPending = false;
   }
+}
+
+function applyLockedState(nextLocked: boolean): void {
+  locked = nextLocked;
+  overlayElement.classList.toggle("is-locked", locked);
+  if (locked) finishOverlayDrag();
+}
+
+function finishOverlayDrag(event?: PointerEvent): void {
+  if (dragPointerId === null || (event && event.pointerId !== dragPointerId)) return;
+  if (overlayElement.hasPointerCapture(dragPointerId)) {
+    overlayElement.releasePointerCapture(dragPointerId);
+  }
+  dragPointerId = null;
+  window.overlay.endDrag();
 }
 
 function render(now: number): void {

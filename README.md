@@ -34,7 +34,7 @@ If Windows asks for network access, allow the app on **Private networks**. Borde
 
 ## Tray menu and settings
 
-Right-click the overlay icon in the Windows system tray to open its menu:
+Right-click either the overlay itself or its icon in the Windows system tray to open the same menu:
 
 - **Settings** opens the separate settings window.
 - **Show/Hide overlay** changes only the overlay's visibility.

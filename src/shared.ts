@@ -64,6 +64,10 @@ export interface OverlayApi {
   onLockChanged: (callback: (locked: boolean) => void) => () => void;
   onDemoChanged: (callback: (enabled: boolean) => void) => () => void;
   getSnapshot: () => Promise<OverlaySnapshot>;
+  startDrag: (screenX: number, screenY: number) => void;
+  moveDrag: (screenX: number, screenY: number) => void;
+  endDrag: () => void;
+  showContextMenu: () => void;
   setLocked: (locked: boolean) => void;
   toggleDemo: () => void;
   close: () => void;
