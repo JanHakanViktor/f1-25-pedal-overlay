@@ -47,6 +47,8 @@ let overlayDrag: {
   pointerY: number;
   windowX: number;
   windowY: number;
+  windowWidth: number;
+  windowHeight: number;
 } | null = null;
 
 function createOverlayWindow(): void {
@@ -341,12 +343,14 @@ ipcMain.on("overlay:drag-start", (event, position: unknown) => {
     return;
   }
 
-  const [windowX, windowY] = overlayWindow.getPosition();
+  const bounds = overlayWindow.getBounds();
   overlayDrag = {
     pointerX: position.screenX,
     pointerY: position.screenY,
-    windowX,
-    windowY
+    windowX: bounds.x,
+    windowY: bounds.y,
+    windowWidth: OVERLAY_WIDTH + (steeringEnabled ? STEERING_GAUGE_WIDTH : 0),
+    windowHeight: OVERLAY_HEIGHT
   };
 });
 ipcMain.on("overlay:drag-move", (event, position: unknown) => {
@@ -355,11 +359,12 @@ ipcMain.on("overlay:drag-move", (event, position: unknown) => {
     return;
   }
 
-  overlayWindow.setPosition(
-    Math.round(overlayDrag.windowX + position.screenX - overlayDrag.pointerX),
-    Math.round(overlayDrag.windowY + position.screenY - overlayDrag.pointerY),
-    false
-  );
+  overlayWindow.setBounds({
+    x: Math.round(overlayDrag.windowX + position.screenX - overlayDrag.pointerX),
+    y: Math.round(overlayDrag.windowY + position.screenY - overlayDrag.pointerY),
+    width: overlayDrag.windowWidth,
+    height: overlayDrag.windowHeight
+  }, false);
 });
 ipcMain.on("overlay:drag-end", (event) => {
   if (overlayWindow && event.sender === overlayWindow.webContents) overlayDrag = null;
