@@ -1,6 +1,7 @@
 module.exports = {
   packagerConfig: {
-    asar: true
+    asar: true,
+    ignore: [/[\\/]release(?:[\\/]|$)/]
   },
   rebuildConfig: {},
   makers: [

@@ -8,13 +8,14 @@
   "main": "dist/main.js",
   "scripts": {
     "clean": "node scripts/clean.mjs",
+    "clean:package": "node scripts/clean-package.mjs",
     "build": "npm run clean && tsc && node scripts/copy-assets.mjs",
     "start": "npm run build && electron .",
     "steering": "npm run build && electron . --steering",
     "dev": "npm run start",
     "test": "npm run build && node --test dist/**/*.test.js",
-    "package": "npm run build && electron-forge package",
-    "make": "npm run build && electron-forge make"
+    "package": "npm run clean:package && npm run build && electron-forge package",
+    "make": "npm run clean:package && npm run build && electron-forge make"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.2",
