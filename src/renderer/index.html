@@ -12,7 +12,11 @@
       <section class="telemetry" aria-label="Live pedal inputs">
         <aside class="steering" id="steeringGauge" aria-label="Steering angle" hidden>
           <div class="steering-dial" id="steeringDial" role="meter" aria-valuemin="-180" aria-valuemax="180" aria-valuenow="0">
-            <div class="steering-marker" id="steeringMarker"></div>
+            <div class="steering-marker" id="steeringMarker">
+              <svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+                <path d="M 48 1.21 A 60 60 0 0 1 72 1.21 L 72 9.4 A 52 52 0 0 0 48 9.4 Z"></path>
+              </svg>
+            </div>
             <output class="steering-value" id="steeringValue">0°</output>
           </div>
         </aside>

@@ -23,7 +23,7 @@ body {
   padding: 12px;
   overflow: hidden;
   color: #f4f7fa;
-  background: rgba(7, 9, 12, 0.91);
+  background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 9px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34);
@@ -64,8 +64,18 @@ body {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.34);
+  background: rgba(0, 0, 0, 0.18);
   box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.48);
+}
+
+.steering-dial::before {
+  content: "";
+  position: absolute;
+  inset: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  box-shadow: 0 0 0 12px rgba(0, 0, 0, 0.38);
+  pointer-events: none;
 }
 
 .steering-marker {
@@ -77,17 +87,16 @@ body {
   will-change: transform;
 }
 
-.steering-marker::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 28px;
-  height: 10px;
-  border-radius: 2px;
-  background: #e8edf2;
-  box-shadow: 0 0 7px rgba(232, 237, 242, 0.45);
-  transform: translateX(-50%);
+.steering-marker svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.steering-marker path {
+  fill: #e8edf2;
+  filter: drop-shadow(0 0 4px rgba(232, 237, 242, 0.45));
 }
 
 .steering-value {
