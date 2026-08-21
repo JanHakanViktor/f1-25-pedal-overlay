@@ -7,6 +7,7 @@ import {
   screen,
   Tray
 } from "electron";
+import squirrelStartup from "electron-squirrel-startup";
 import path from "node:path";
 import { DEFAULT_SETTINGS, sanitizeSettings, SettingsStore } from "./config";
 import type {
@@ -18,6 +19,10 @@ import type {
   ShortcutSettings
 } from "./shared";
 import { TelemetryServer } from "./telemetry/server";
+
+if (squirrelStartup) {
+  app.quit();
+}
 
 const OVERLAY_WIDTH = 460;
 const STEERING_GAUGE_WIDTH = 141;
@@ -343,7 +348,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
-    app.setAppUserModelId("com.janhakanviktor.f125pedaloverlay");
+    app.setAppUserModelId("com.squirrel.F125PedalOverlay.F125PedalOverlay");
     settingsStore = new SettingsStore(path.join(app.getPath("userData"), "settings.json"));
     settings = settingsStore.load();
     udpPort = resolveUdpPort();

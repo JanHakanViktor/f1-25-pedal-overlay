@@ -1,8 +1,10 @@
 {
   "name": "f1-25-pedal-overlay",
+  "productName": "F1 25 Pedal Overlay",
   "version": "0.1.0",
   "private": true,
   "description": "Transparent throttle and brake input overlay for EA SPORTS F1 25",
+  "author": "JanHakanViktor",
   "main": "dist/main.js",
   "scripts": {
     "clean": "node scripts/clean.mjs",
@@ -10,11 +12,19 @@
     "start": "npm run build && electron .",
     "steering": "npm run build && electron . --steering",
     "dev": "npm run start",
-    "test": "npm run build && node --test dist/**/*.test.js"
+    "test": "npm run build && node --test dist/**/*.test.js",
+    "package": "npm run build && electron-forge package",
+    "make": "npm run build && electron-forge make"
   },
   "devDependencies": {
+    "@electron-forge/cli": "^7.11.2",
+    "@electron-forge/maker-squirrel": "^7.11.2",
+    "@types/electron-squirrel-startup": "^1.0.2",
     "@types/node": "^24.0.0",
     "electron": "^43.4.1",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1"
   }
 }
