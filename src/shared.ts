@@ -1,10 +1,12 @@
 export type ConnectionState = "listening" | "connected" | "error";
+export type BrakeLockup = "none" | "front" | "rear" | "both";
 
 export interface PedalTelemetry {
   speedKph: number;
   throttle: number;
   steering: number;
   brake: number;
+  brakeLockup: BrakeLockup;
   timestamp: number;
 }
 

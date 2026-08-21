@@ -5,8 +5,12 @@ import {
   CAR_TELEMETRY_PACKET_SIZE,
   CAR_TELEMETRY_RECORD_SIZE,
   F1_25_PACKET_FORMAT,
+  MOTION_EX_PACKET_ID,
+  MOTION_EX_PACKET_SIZE,
   PACKET_HEADER_SIZE,
-  parseF125Pedals
+  WHEEL_SLIP_RATIO_OFFSET,
+  parseF125Pedals,
+  parseF125WheelMotion
 } from "./parser";
 
 test("parses the selected player car's throttle and brake", () => {
@@ -28,6 +32,22 @@ test("parses the selected player car's throttle and brake", () => {
   assert.ok(Math.abs(result.throttle - 0.72) < 0.0001);
   assert.ok(Math.abs(result.steering - -0.45) < 0.0001);
   assert.ok(Math.abs(result.brake - 0.31) < 0.0001);
+  assert.equal(result.brakeLockup, "none");
+});
+
+test("parses wheel slip ratios from the motion ex packet", () => {
+  const packet = Buffer.alloc(MOTION_EX_PACKET_SIZE);
+  packet.writeUInt16LE(F1_25_PACKET_FORMAT, 0);
+  packet.writeUInt8(MOTION_EX_PACKET_ID, 6);
+  [-0.42, -0.08, 0.03, -0.51].forEach((value, wheelIndex) => {
+    packet.writeFloatLE(value, WHEEL_SLIP_RATIO_OFFSET + wheelIndex * 4);
+  });
+
+  const result = parseF125WheelMotion(packet, 4321);
+  assert.ok(result);
+  assert.equal(result.timestamp, 4321);
+  assert.ok(Math.abs(result.wheelSlipRatio[0] - -0.42) < 0.0001);
+  assert.ok(Math.abs(result.wheelSlipRatio[3] - -0.51) < 0.0001);
 });
 
 test("ignores other packet types and malformed packets", () => {
@@ -54,6 +74,7 @@ test("clamps invalid input values", () => {
     throttle: 1,
     steering: 1,
     brake: 0,
+    brakeLockup: "none",
     timestamp: 1
   });
 });

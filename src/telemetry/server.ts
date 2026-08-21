@@ -1,7 +1,11 @@
 import dgram from "node:dgram";
 import { EventEmitter } from "node:events";
-import type { OverlayStatus, PedalTelemetry } from "../shared";
-import { parseF125Pedals } from "./parser";
+import type { BrakeLockup, OverlayStatus, PedalTelemetry } from "../shared";
+import { parseF125Pedals, parseF125WheelMotion } from "./parser";
+
+const MOTION_MAX_AGE_MS = 150;
+const LOCKUP_ENTER_SLIP_RATIO = -0.35;
+const LOCKUP_EXIT_SLIP_RATIO = -0.18;
 
 export interface TelemetryServerEvents {
   telemetry: [PedalTelemetry];
@@ -12,6 +16,10 @@ export class TelemetryServer extends EventEmitter<TelemetryServerEvents> {
   private socket: dgram.Socket | null = null;
   private lastPacketAt = 0;
   private connectionTimer: NodeJS.Timeout | null = null;
+  private wheelSlipRatio: [number, number, number, number] = [0, 0, 0, 0];
+  private lastWheelMotionAt = 0;
+  private frontBrakeLockup = false;
+  private rearBrakeLockup = false;
 
   constructor(private readonly port = 20777) {
     super();
@@ -24,8 +32,17 @@ export class TelemetryServer extends EventEmitter<TelemetryServerEvents> {
     // otherwise bind successfully while another process receives the packets.
     this.socket = dgram.createSocket("udp4");
     this.socket.on("message", (packet) => {
+      const wheelMotion = parseF125WheelMotion(packet);
+      if (wheelMotion) {
+        this.wheelSlipRatio = wheelMotion.wheelSlipRatio;
+        this.lastWheelMotionAt = wheelMotion.timestamp;
+        return;
+      }
+
       const telemetry = parseF125Pedals(packet);
       if (!telemetry) return;
+
+      telemetry.brakeLockup = this.detectBrakeLockup(telemetry);
 
       const wasDisconnected = Date.now() - this.lastPacketAt > 1500;
       this.lastPacketAt = Date.now();
@@ -63,6 +80,36 @@ export class TelemetryServer extends EventEmitter<TelemetryServerEvents> {
       // A failed bind leaves the socket in an already-closed state.
     }
     this.socket = null;
+    this.wheelSlipRatio = [0, 0, 0, 0];
+    this.lastWheelMotionAt = 0;
+    this.frontBrakeLockup = false;
+    this.rearBrakeLockup = false;
+  }
+
+  private detectBrakeLockup(telemetry: PedalTelemetry): BrakeLockup {
+    const motionIsFresh = telemetry.timestamp - this.lastWheelMotionAt <= MOTION_MAX_AGE_MS;
+    const isBrakingAtSpeed = telemetry.brake >= 0.1 && telemetry.speedKph >= 20;
+    if (!motionIsFresh || !isBrakingAtSpeed) {
+      this.frontBrakeLockup = false;
+      this.rearBrakeLockup = false;
+      return "none";
+    }
+
+    // F1 wheel arrays are ordered rear-left, rear-right, front-left, front-right.
+    const rearSlipRatio = Math.min(this.wheelSlipRatio[0], this.wheelSlipRatio[1]);
+    const frontSlipRatio = Math.min(this.wheelSlipRatio[2], this.wheelSlipRatio[3]);
+    this.frontBrakeLockup = this.axleIsLocked(frontSlipRatio, this.frontBrakeLockup);
+    this.rearBrakeLockup = this.axleIsLocked(rearSlipRatio, this.rearBrakeLockup);
+
+    if (this.frontBrakeLockup && this.rearBrakeLockup) return "both";
+    if (this.frontBrakeLockup) return "front";
+    if (this.rearBrakeLockup) return "rear";
+    return "none";
+  }
+
+  private axleIsLocked(slipRatio: number, wasLocked: boolean): boolean {
+    const threshold = wasLocked ? LOCKUP_EXIT_SLIP_RATIO : LOCKUP_ENTER_SLIP_RATIO;
+    return slipRatio <= threshold;
   }
 
   private emitStatus(state: OverlayStatus["state"], message: string): void {

@@ -26,6 +26,7 @@ let lastTelemetry: PedalTelemetry = {
   throttle: 0,
   steering: 0,
   brake: 0,
+  brakeLockup: "none",
   timestamp: 0
 };
 let lastStatus: OverlayStatus = {
@@ -119,8 +120,16 @@ function setDemoEnabled(enabled: boolean): void {
       const steering = Math.sin(seconds * 0.9) * 0.85;
       const brakePulse = Math.sin(seconds * 0.82);
       const brake = brakePulse > 0.63 ? Math.min(1, (brakePulse - 0.63) * 2.8) : 0;
+      const lockupPulse = Math.sin(seconds * 5.5);
+      const brakeLockup = brake <= 0.72
+        ? "none"
+        : lockupPulse > 0.35
+          ? "front"
+          : lockupPulse < -0.35
+            ? "rear"
+            : "both";
       const speedKph = Math.round(Math.max(0, 110 + throttle * 210 - brake * 95));
-      sendTelemetry({ speedKph, throttle, steering, brake, timestamp: Date.now() });
+      sendTelemetry({ speedKph, throttle, steering, brake, brakeLockup, timestamp: Date.now() });
     }, 16);
   }
 

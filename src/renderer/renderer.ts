@@ -8,16 +8,24 @@ const steeringValue = getElement<HTMLOutputElement>("steeringValue");
 const historyCanvas = getElement<HTMLCanvasElement>("historyCanvas");
 const historyContext = historyCanvas.getContext("2d");
 
+type BrakeLockup = "none" | "front" | "rear" | "both";
+
 interface HistorySample {
   time: number;
   throttle: number;
   brake: number;
+  brakeLockup: BrakeLockup;
 }
 
 const HISTORY_DURATION_MS = 5000;
 const SAMPLE_INTERVAL_MS = 40;
 const MAX_STEERING_DEGREES = 180;
 const STEERING_MARKER_ARC_DEGREES = 90;
+const THROTTLE_COLOR = "#42e37c";
+const BRAKE_COLOR = "#ff4261";
+const FRONT_LOCKUP_COLOR = "#ffd84a";
+const REAR_LOCKUP_COLOR = "#ff8a2a";
+const BOTH_LOCKUP_COLOR = "#8f1525";
 const inputHistory: HistorySample[] = [];
 
 let shownThrottle = 0;
@@ -26,6 +34,7 @@ let shownSteering = 0;
 let targetThrottle = 0;
 let targetBrake = 0;
 let targetSteering = 0;
+let targetBrakeLockup: BrakeLockup = "none";
 let lastSampleAt = -SAMPLE_INTERVAL_MS;
 let snapshotPending = false;
 
@@ -33,6 +42,7 @@ window.overlay.onTelemetry((telemetry) => {
   targetThrottle = telemetry.throttle;
   targetBrake = telemetry.brake;
   targetSteering = telemetry.steering;
+  targetBrakeLockup = telemetry.brakeLockup;
 });
 
 window.overlay.onLockChanged((locked) => {
@@ -50,6 +60,7 @@ async function refreshSnapshot(): Promise<void> {
     targetThrottle = snapshot.telemetry.throttle;
     targetBrake = snapshot.telemetry.brake;
     targetSteering = snapshot.telemetry.steering;
+    targetBrakeLockup = snapshot.telemetry.brakeLockup;
     overlayElement.classList.toggle("is-locked", snapshot.locked);
     overlayElement.classList.toggle("has-steering", snapshot.steeringEnabled);
     steeringGauge.hidden = !snapshot.steeringEnabled;
@@ -71,7 +82,12 @@ function render(now: number): void {
   setSteering(shownSteering);
 
   if (now - lastSampleAt >= SAMPLE_INTERVAL_MS) {
-    inputHistory.push({ time: now, throttle: shownThrottle, brake: shownBrake });
+    inputHistory.push({
+      time: now,
+      throttle: shownThrottle,
+      brake: shownBrake,
+      brakeLockup: targetBrakeLockup
+    });
     lastSampleAt = now;
   }
 
@@ -107,8 +123,8 @@ function drawHistory(now: number): void {
 
   historyContext.setTransform(deviceScale, 0, 0, deviceScale, 0, 0);
   historyContext.clearRect(0, 0, width, height);
-  drawSignal("throttle", "#42e37c", now, width, height);
-  drawSignal("brake", "#ff4261", now, width, height);
+  drawSignal("throttle", THROTTLE_COLOR, now, width, height);
+  drawBrakeSignal(now, width, height);
 }
 
 function drawSignal(
@@ -129,6 +145,53 @@ function drawSignal(
     else historyContext.lineTo(x, y);
   });
   historyContext.lineTo(width, 2 + (1 - inputHistory[inputHistory.length - 1][input]) * (height - 4));
+  strokeHistoryPath(color);
+}
+
+function drawBrakeSignal(now: number, width: number, height: number): void {
+  if (!historyContext || inputHistory.length === 0) return;
+
+  const cutoff = now - HISTORY_DURATION_MS;
+  const pointFor = (sample: HistorySample) => ({
+    x: Math.max(0, ((sample.time - cutoff) / HISTORY_DURATION_MS) * width),
+    y: 2 + (1 - sample.brake) * (height - 4)
+  });
+
+  let previousPoint = pointFor(inputHistory[0]);
+  let segmentColor = brakeColorFor(inputHistory[0].brakeLockup);
+  historyContext.beginPath();
+  historyContext.moveTo(previousPoint.x, previousPoint.y);
+
+  for (let index = 1; index < inputHistory.length; index += 1) {
+    const sample = inputHistory[index];
+    const point = pointFor(sample);
+    const color = brakeColorFor(sample.brakeLockup);
+
+    if (color !== segmentColor) {
+      strokeHistoryPath(segmentColor);
+      historyContext.beginPath();
+      historyContext.moveTo(previousPoint.x, previousPoint.y);
+      segmentColor = color;
+    }
+
+    historyContext.lineTo(point.x, point.y);
+    previousPoint = point;
+  }
+
+  historyContext.lineTo(width, previousPoint.y);
+  strokeHistoryPath(segmentColor);
+}
+
+function brakeColorFor(lockup: BrakeLockup): string {
+  if (lockup === "front") return FRONT_LOCKUP_COLOR;
+  if (lockup === "rear") return REAR_LOCKUP_COLOR;
+  if (lockup === "both") return BOTH_LOCKUP_COLOR;
+  return BRAKE_COLOR;
+}
+
+function strokeHistoryPath(color: string): void {
+  if (!historyContext) return;
+
   historyContext.strokeStyle = color;
   historyContext.lineWidth = 2.2;
   historyContext.lineJoin = "round";
