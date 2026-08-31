@@ -26,7 +26,7 @@ public sealed class BrakeLockupDetectorTests
     [InlineData(1150, BrakeLockup.Front)]
     [InlineData(1151, BrakeLockup.None)]
     [InlineData(999, BrakeLockup.Front)]
-    public void MotionFreshnessMatchesElectronTimestampComparison(long telemetryTimestamp, BrakeLockup expected)
+    public void MotionFreshnessMatchesTimestampComparison(long telemetryTimestamp, BrakeLockup expected)
     {
         BrakeLockupDetector detector = new();
         detector.UpdateMotion(new WheelMotionTelemetry(0, 0, -0.5, 0, 1000));

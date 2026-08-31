@@ -44,7 +44,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 ; Always let the user choose the install mode instead of silently inheriting
-; the old per-user mode from the Electron/native installer.
+; a previous per-user installation mode.
 UsePreviousPrivileges=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
