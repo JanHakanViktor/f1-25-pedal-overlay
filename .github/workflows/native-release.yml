@@ -1,0 +1,61 @@
+name: Native Windows artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-native:
+    name: Build native Windows artifacts
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore native projects
+        shell: pwsh
+        run: dotnet restore .\F1TelemetryOverlay.slnx
+
+      - name: Run native tests
+        shell: pwsh
+        run: dotnet test .\tests\F1TelemetryOverlay.Core.Tests\F1TelemetryOverlay.Core.Tests.csproj --configuration Release --no-restore
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: winget install --id JRSoftware.InnoSetup --exact --scope machine --silent --accept-package-agreements --accept-source-agreements
+
+      - name: Locate Windows SDK makeappx
+        shell: pwsh
+        run: |
+          $makeappx = Get-ChildItem -LiteralPath "C:\Program Files (x86)\Windows Kits\10\bin" -Filter makeappx.exe -File -Recurse |
+            Where-Object { $_.FullName -match "\\x64\\makeappx\.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -ExpandProperty FullName -First 1
+          if (-not $makeappx) { throw "Windows SDK makeappx.exe was not found on the runner." }
+          "MAKEAPPX_PATH=$makeappx" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build installer and explicit local MSIX
+        shell: pwsh
+        run: .\scripts\build-native-release.ps1 -MakeAppxPath "$env:MAKEAPPX_PATH" -AllowPlaceholderIdentity
+
+      - name: Upload native artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: f1-25-telemetry-overlay-native-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            artifacts/installer/F1-25-Telemetry-Overlay-Setup.exe
+            artifacts/msix/x64/F1-25-Telemetry-Overlay.msix
+
+      # The workflow never creates a GitHub release automatically. A maintainer
+      # can download this run's artifacts and publish a release deliberately.
