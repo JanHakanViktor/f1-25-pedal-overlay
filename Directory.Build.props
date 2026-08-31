@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <NativeAppVersion>0.1.3</NativeAppVersion>
+    <NativeMsixVersion>1.0.3.0</NativeMsixVersion>
+
+    <Version>$(NativeAppVersion)</Version>
+    <AssemblyVersion>$(NativeAppVersion).0</AssemblyVersion>
+    <FileVersion>$(NativeAppVersion).0</FileVersion>
+    <InformationalVersion>$(NativeAppVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
+    <Authors>JanHakanViktor</Authors>
+    <Company>JanHakanViktor</Company>
+    <Title>F1 25 Telemetry Overlay</Title>
+    <AssemblyTitle>F1 25 Telemetry Overlay</AssemblyTitle>
+    <Product>F1 25 Telemetry Overlay</Product>
+    <Description>Transparent throttle and brake input overlay for EA SPORTS F1 25</Description>
+  </PropertyGroup>
+</Project>

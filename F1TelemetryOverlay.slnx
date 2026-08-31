@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/F1TelemetryOverlay.Core/F1TelemetryOverlay.Core.csproj" />
+    <Project Path="src/F1TelemetryOverlay.Wpf/F1TelemetryOverlay.Wpf.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/F1TelemetryOverlay.Core.Tests/F1TelemetryOverlay.Core.Tests.csproj" />
+  </Folder>
+</Solution>
