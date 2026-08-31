@@ -478,7 +478,7 @@ internal sealed class OverlaySurface : FrameworkElement
         double secondX = firstX + BarWidth + BarGap;
         DrawBar(dc, new Rect(firstX, graph.Top, BarWidth, graph.Height), _shownThrottle, ColorFromHex("#42e37c"));
         // Lock-up colors belong to the brake history line. The live brake bar
-        // remains the stable pink/red pedal indicator, matching the Electron UI.
+        // remains the stable pink/red pedal indicator.
         DrawBar(dc, new Rect(secondX, graph.Top, BarWidth, graph.Height), _shownBrake, ColorFromHex(BrakeColor));
     }
 

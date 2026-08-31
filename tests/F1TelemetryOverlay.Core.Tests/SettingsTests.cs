@@ -56,7 +56,7 @@ public sealed class SettingsTests
     [InlineData("1e100", 65535)]
     [InlineData("-1e100", 1)]
     [InlineData("20777.5", 20777)]
-    public void UdpPortMatchesJavaScriptIntegerAndClampSemantics(string jsonNumber, int expected)
+    public void UdpPortClampsNumericInputToValidRange(string jsonNumber, int expected)
     {
         AppSettings result = SettingsSanitizer.Sanitize($$"""{ "udpPort": {{jsonNumber}} }""");
 
@@ -64,7 +64,7 @@ public sealed class SettingsTests
     }
 
     [Fact]
-    public void LoadsExistingElectronCamelCaseSettingsAndPersistsCompatibleJson()
+    public void LoadsExistingCamelCaseSettingsAndPersistsJson()
     {
         using TemporaryDirectory directory = new();
         string path = Path.Combine(directory.Path, "settings.json");
