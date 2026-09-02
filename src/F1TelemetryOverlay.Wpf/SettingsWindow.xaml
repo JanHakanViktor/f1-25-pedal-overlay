@@ -1,10 +1,10 @@
 <Window x:Class="F1TelemetryOverlay.Wpf.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="F1 25 Telemetry Overlay Settings"
-        Width="620"
+        Title="Telemetry Hub"
+        Width="1000"
         Height="720"
-        MinWidth="540"
+        MinWidth="780"
         MinHeight="600"
         WindowStartupLocation="CenterOwner"
         Background="#11161C"
@@ -509,6 +509,17 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SidebarButtonStyle"
+               TargetType="{x:Type Button}"
+               BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="FontWeight" Value="Normal" />
+        </Style>
+
         <Style x:Key="PrimaryButtonStyle"
                TargetType="{x:Type Button}"
                BasedOn="{StaticResource {x:Type Button}}">
@@ -518,105 +529,77 @@
         </Style>
     </Window.Resources>
 
-    <Border Margin="18"
-            Padding="22,20,22,16"
-            Background="{StaticResource SurfaceBrush}">
+    <Border Background="{StaticResource WindowBrush}">
         <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="194" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="14" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="16" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="74" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0"
-                  Background="{StaticResource SurfaceBrush}">
-                <StackPanel>
-                    <TextBlock Text="Overlay settings"
-                               FontSize="23"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource TextBrush}" />
-                    <TextBlock Margin="0,5,0,0"
-                               Text="Tune your display, telemetry, colours, and shortcuts."
-                               Foreground="{StaticResource MutedBrush}"
-                               FontSize="12.5" />
-                </StackPanel>
-            </Grid>
-
-            <ScrollViewer x:Name="SettingsScrollViewer"
-                          Grid.Row="2"
-                          Style="{StaticResource ThemedScrollViewerStyle}"
-                          Padding="0,4,16,8"
-                          HorizontalContentAlignment="Stretch"
-                          HorizontalScrollBarVisibility="Disabled"
-                          VerticalScrollBarVisibility="Auto"
-                          CanContentScroll="False"
-                          Focusable="False"
-                          ScrollChanged="SettingsScrollViewerScrollChanged">
-                <StackPanel x:Name="Options"
-                            HorizontalAlignment="Stretch"
-                            MinWidth="0" />
-            </ScrollViewer>
-
-            <Border Grid.Row="4"
-                    Padding="14,10"
-                    Background="{StaticResource SurfaceAltBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0"
-                               Margin="0,0,0,10"
-                               Text="Restore defaults changes this form; Save applies it."
-                               Foreground="{StaticResource MutedBrush}"
-                               TextWrapping="Wrap"
-                               FontSize="11.5" />
-                    <StackPanel Grid.Row="1"
-                                HorizontalAlignment="Right"
-                                Orientation="Horizontal">
-                        <Button x:Name="RestoreButton"
-                                Content="Restore defaults"
-                                Width="128"
-                                Margin="0,0,10,0"
-                                HorizontalContentAlignment="Center" />
-                        <Button x:Name="CancelButton"
-                                Content="Cancel"
-                                Width="96"
-                                Margin="0,0,10,0"
-                                HorizontalContentAlignment="Center" />
-                        <Button x:Name="SaveButton"
-                                Content="Save changes"
-                                Foreground="#FFFFFF"
-                                Width="116"
-                                HorizontalContentAlignment="Center"
-                                IsDefault="True"
-                                Style="{StaticResource PrimaryButtonStyle}" />
+            <Border Grid.Column="0" Grid.RowSpan="2" Padding="18,24,16,18" Background="#0D1116">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Text="TELEMETRY" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="Bold" />
+                        <TextBlock Text="HUB" Foreground="{StaticResource TextBrush}" FontSize="26" FontWeight="SemiBold" />
+                        <Border Height="2" Width="34" Background="{StaticResource AccentBrush}" HorizontalAlignment="Left" Margin="0,8,0,24" />
                     </StackPanel>
-                </Grid>
+                    <StackPanel DockPanel.Dock="Bottom">
+                        <TextBlock Text="F1 25" Foreground="{StaticResource MutedBrush}" FontSize="11" />
+                        <TextBlock Text="Live telemetry controls" Foreground="{StaticResource MutedBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,3,0,0" />
+                    </StackPanel>
+                    <StackPanel>
+                        <Button x:Name="DashboardNavigationButton" Content="  Dashboard" Tag="Dashboard" Style="{StaticResource SidebarButtonStyle}" />
+                        <Button x:Name="OverlaysNavigationButton" Content="  Overlays" Tag="Overlays" Style="{StaticResource SidebarButtonStyle}" />
+                        <Button x:Name="ConnectionNavigationButton" Content="  Connection" Tag="Connection" Style="{StaticResource SidebarButtonStyle}" />
+                        <Button x:Name="AppearanceNavigationButton" Content="  Appearance" Tag="Appearance" Style="{StaticResource SidebarButtonStyle}" />
+                        <Button x:Name="ShortcutsNavigationButton" Content="  Shortcuts" Tag="Shortcuts" Style="{StaticResource SidebarButtonStyle}" />
+                    </StackPanel>
+                </DockPanel>
             </Border>
 
-            <Border x:Name="Snackbar"
-                    Grid.RowSpan="5"
-                    Panel.ZIndex="10"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Bottom"
-                    Margin="0,0,0,76"
-                    Padding="14,9"
-                    Background="{StaticResource AccentSoftBrush}"
-                    BorderBrush="{StaticResource AccentBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    IsHitTestVisible="False"
-                    Visibility="Collapsed">
-                <TextBlock x:Name="SnackbarText"
-                           Foreground="{StaticResource TextBrush}"
-                           FontSize="12"
-                           FontWeight="SemiBold" />
+            <Grid Grid.Column="1" Grid.Row="0" Margin="28,24,28,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <StackPanel>
+                        <TextBlock x:Name="PageTitleText" Text="Overlays" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+                        <TextBlock x:Name="PageSubtitleText" Text="Arrange and tune the widgets shown over F1 25." Foreground="{StaticResource MutedBrush}" FontSize="12.5" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <Border HorizontalAlignment="Right" Padding="11,7" Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6">
+                        <TextBlock x:Name="HeaderStatusText" Text="Waiting on UDP 20777" Foreground="{StaticResource MutedBrush}" FontSize="11.5" />
+                    </Border>
+                </Grid>
+                <ScrollViewer x:Name="SettingsScrollViewer" Grid.Row="2" Style="{StaticResource ThemedScrollViewerStyle}" Padding="0,2,14,10" HorizontalContentAlignment="Stretch" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" CanContentScroll="False" Focusable="False" ScrollChanged="SettingsScrollViewerScrollChanged">
+                    <Grid x:Name="PageHost" HorizontalAlignment="Stretch" MinWidth="0">
+                        <StackPanel x:Name="DashboardPage" Visibility="Collapsed" />
+                        <StackPanel x:Name="OverlaysPage" />
+                        <StackPanel x:Name="ConnectionPage" Visibility="Collapsed" />
+                        <StackPanel x:Name="AppearancePage" Visibility="Collapsed" />
+                        <StackPanel x:Name="ShortcutsPage" Visibility="Collapsed" />
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
+
+            <Border x:Name="FooterBar" Grid.Column="1" Grid.Row="1" Padding="28,10" Background="{StaticResource SurfaceAltBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,1,0,0">
+                <DockPanel LastChildFill="True">
+                    <StackPanel x:Name="FooterActions" DockPanel.Dock="Right" HorizontalAlignment="Right" Orientation="Horizontal">
+                        <Button x:Name="RestoreButton" Content="Restore defaults" Width="128" Margin="0,0,10,0" HorizontalContentAlignment="Center" />
+                        <Button x:Name="CancelButton" Content="Cancel" Width="96" Margin="0,0,10,0" HorizontalContentAlignment="Center" />
+                        <Button x:Name="SaveButton" Content="Save changes" Foreground="#FFFFFF" Width="116" HorizontalContentAlignment="Center" IsDefault="True" Style="{StaticResource PrimaryButtonStyle}" />
+                    </StackPanel>
+                    <TextBlock x:Name="FooterHintText" MaxWidth="150" Margin="0,0,12,0" VerticalAlignment="Center" Text="Restore defaults changes this form; Save applies it." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" FontSize="11.5" />
+                </DockPanel>
+            </Border>
+
+            <Border x:Name="Snackbar" Grid.Column="1" Grid.RowSpan="2" Panel.ZIndex="10" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,82" Padding="14,9" Background="{StaticResource AccentSoftBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="6" IsHitTestVisible="False" Visibility="Collapsed">
+                <TextBlock x:Name="SnackbarText" Foreground="{StaticResource TextBrush}" FontSize="12" FontWeight="SemiBold" />
             </Border>
         </Grid>
     </Border>

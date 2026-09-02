@@ -20,22 +20,35 @@ using WpfMessageBox = System.Windows.MessageBox;
 using WpfPoint = System.Windows.Point;
 using WpfBrushes = System.Windows.Media.Brushes;
 using WpfRectangle = System.Windows.Shapes.Rectangle;
+using Button = System.Windows.Controls.Button;
 
 namespace F1TelemetryOverlay.Wpf;
 
 public partial class SettingsWindow : Window
 {
     private readonly Func<AppSettings, (bool Ok, string Error)> _save;
-    private readonly AppSettings _initial;
+    private readonly Func<bool>? _beginArrange;
+    private readonly Action? _endArrange;
+    private readonly Func<AppSettings>? _currentSettings;
+    private readonly Func<OverlayStatus>? _statusProvider;
+    private AppSettings _initial;
     // Widget state is a transactional form baseline. Normal saves preserve
     // these values (for example, positions moved while the settings window is
     // open), while Restore defaults deliberately replaces both baselines.
     private OverlayWidgetSettings _pendingPedalsOverlay;
     private OverlayWidgetSettings _pendingTyreWearOverlay;
+    private LockupColorMode _pendingLockupColorMode;
+    private LockupColorSettings _pendingLockupColors;
     private readonly CheckBox _steeringDefault = new();
+    private readonly CheckBox _pedalsEnabled = new();
+    private readonly CheckBox _pedalsLocked = new();
     private readonly CheckBox _tyreWearEnabled = new();
+    private readonly CheckBox _tyreWearLocked = new();
     private readonly ComboBox _steeringPosition = new();
     private readonly Slider _transparency = new();
+    private readonly Slider _pedalsScale = new();
+    private readonly Slider _tyreWearOpacity = new();
+    private readonly Slider _tyreWearScale = new();
     private readonly TextBox _udpPort = new();
     private readonly Slider _sensitivity = new();
     private readonly Slider _duration = new();
@@ -46,6 +59,16 @@ public partial class SettingsWindow : Window
     private readonly TextBox _toggleSteering = new();
     private readonly TextBox _quit = new();
     private DispatcherTimer? _snackbarTimer;
+    private DispatcherTimer? _statusTimer;
+    private Button? _arrangeButton;
+    private Button? _doneArrangeButton;
+    private bool _arranging;
+    private bool _pedalsPositionReset;
+    private bool _tyreWearPositionReset;
+    private readonly Dictionary<string, StackPanel> _pages = new(StringComparer.Ordinal);
+    private TextBlock? _dashboardStatusText;
+    private TextBlock? _dashboardOverlaySummary;
+    private TextBlock? _connectionStatusText;
 
     private sealed class ColorPickerState
     {
@@ -60,12 +83,20 @@ public partial class SettingsWindow : Window
         internal bool Updating { get; set; }
     }
 
-    internal SettingsWindow(AppSettings settings, Func<AppSettings, (bool Ok, string Error)> save)
+    internal SettingsWindow(AppSettings settings, Func<AppSettings, (bool Ok, string Error)> save,
+        Func<bool>? beginArrange = null, Action? endArrange = null,
+        Func<AppSettings>? currentSettings = null, Func<OverlayStatus>? statusProvider = null)
     {
         _initial = settings;
         _pendingPedalsOverlay = settings.PedalsOverlay;
         _pendingTyreWearOverlay = settings.TyreWearOverlay;
+        _pendingLockupColorMode = settings.LockupColorMode;
+        _pendingLockupColors = settings.LockupColors;
         _save = save;
+        _beginArrange = beginArrange;
+        _endArrange = endArrange;
+        _currentSettings = currentSettings;
+        _statusProvider = statusProvider;
         InitializeComponent();
         SourceInitialized += (_, _) => ApplyNativeChromeTheme();
         BuildOptions();
@@ -77,6 +108,12 @@ public partial class SettingsWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _snackbarTimer?.Stop();
+        _statusTimer?.Stop();
+        if (_arranging)
+        {
+            _arranging = false;
+            _endArrange?.Invoke();
+        }
         base.OnClosed(e);
     }
 
@@ -107,62 +144,59 @@ public partial class SettingsWindow : Window
 
     private void BuildOptions()
     {
-        _steeringDefault.Content = "Enable steering by default";
-        _steeringDefault.IsChecked = _initial.SteeringEnabledByDefault;
-        _tyreWearEnabled.Content = "Enable tyre wear overlay";
-        _tyreWearEnabled.IsChecked = _initial.TyreWearOverlay.Enabled;
+        WireNavigation();
         _steeringPosition.Items.Add("Left side of graph");
         _steeringPosition.Items.Add("Right side of graph");
-        _steeringPosition.SelectedIndex = _initial.SteeringPosition == SteeringPosition.Right ? 1 : 0;
         _steeringPosition.PreviewMouseWheel += SteeringPositionPreviewMouseWheel;
-        ConfigureSlider(_transparency, 0.2, 1, 0.01, 0.1, _initial.OverlayTransparency);
+        ConfigureSlider(_transparency, 0.2, 1, 0.01, 0.1, _initial.PedalsOverlay.Opacity);
+        ConfigureSlider(_pedalsScale, 0.5, 2, 0.01, 0.1, _initial.PedalsOverlay.Scale);
+        ConfigureSlider(_tyreWearOpacity, 0.2, 1, 0.01, 0.1, _initial.TyreWearOverlay.Opacity);
+        ConfigureSlider(_tyreWearScale, 0.5, 2, 0.01, 0.1, _initial.TyreWearOverlay.Scale);
         ConfigureSlider(_sensitivity, 0.15, 0.9, 0.01, 0.1, _initial.LockupSensitivity);
         ConfigureSlider(_duration, 2, 15, 0.5, 1, _initial.GraphDurationSeconds);
 
-        Options.Children.Add(Section(
-            "Overlay",
-            "Set the defaults used when the overlay starts.",
-            _steeringDefault,
-            _tyreWearEnabled,
-            Field("Steering circle position", _steeringPosition),
-            Field("Overlay transparency (0.2 - 1.0)", _transparency),
-            Field("UDP port", _udpPort, _initial.UdpPort.ToString(CultureInfo.InvariantCulture)),
-            Field("Lock-up sensitivity (0.15 - 0.9)", _sensitivity),
-            Field("Graph duration in seconds (2 - 15)", _duration)));
-
-        // The lock-up section has one colour editor, so a second caption would
-        // only repeat information already conveyed by the section heading.
-        FrameworkElement singleField = ColorField(_singleColor, _initial.LockupColors.Single, out _);
-
-        Options.Children.Add(Section(
-            "Lock-up colours",
-            "Choose the colour used whenever a lock-up is detected.",
-            singleField));
-
-        Options.Children.Add(Section(
-            "Global shortcuts",
-            "Use combinations such as Control+Shift+H. Each shortcut must be unique and available.",
-            ShortcutField("Show / hide overlay", _toggleVisibility, _initial.Shortcuts.ToggleVisibility),
-            ShortcutField("Lock / unlock position", _toggleLock, _initial.Shortcuts.ToggleLock),
-            ShortcutField("Toggle demo signal", _toggleDemo, _initial.Shortcuts.ToggleDemo),
-            ShortcutField("Enable steering", _toggleSteering, _initial.Shortcuts.ToggleSteering),
-            ShortcutField("Exit application", _quit, _initial.Shortcuts.Quit)));
-
+        BuildDashboardPage();
+        BuildOverlaysPage();
+        BuildConnectionPage();
+        BuildAppearancePage();
+        BuildShortcutsPage();
+        PopulateFromSettings(_initial);
+        SelectPage("Overlays");
+        RefreshStatus();
+        _statusTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(500),
+        };
+        _statusTimer.Tick += (_, _) => RefreshStatus();
+        _statusTimer.Start();
     }
 
     private void RestoreDefaultsClicked(object sender, RoutedEventArgs e)
     {
         PopulateFromSettings(AppSettings.Default);
+        _pedalsPositionReset = true;
+        _tyreWearPositionReset = true;
+        ShowSnackbar("Defaults restored for this form.");
     }
 
     private void PopulateFromSettings(AppSettings settings)
     {
         _pendingPedalsOverlay = settings.PedalsOverlay;
         _pendingTyreWearOverlay = settings.TyreWearOverlay;
+        _pendingLockupColorMode = settings.LockupColorMode;
+        _pendingLockupColors = settings.LockupColors;
+        _pedalsPositionReset = false;
+        _tyreWearPositionReset = false;
         _steeringDefault.IsChecked = settings.SteeringEnabledByDefault;
+        _pedalsEnabled.IsChecked = settings.PedalsOverlay.Enabled;
+        _pedalsLocked.IsChecked = settings.PedalsOverlay.Locked;
         _tyreWearEnabled.IsChecked = settings.TyreWearOverlay.Enabled;
+        _tyreWearLocked.IsChecked = settings.TyreWearOverlay.Locked;
         _steeringPosition.SelectedIndex = settings.SteeringPosition == SteeringPosition.Right ? 1 : 0;
-        _transparency.Value = Math.Clamp(settings.OverlayTransparency, _transparency.Minimum, _transparency.Maximum);
+        _transparency.Value = Math.Clamp(settings.PedalsOverlay.Opacity, _transparency.Minimum, _transparency.Maximum);
+        _pedalsScale.Value = Math.Clamp(settings.PedalsOverlay.Scale, _pedalsScale.Minimum, _pedalsScale.Maximum);
+        _tyreWearOpacity.Value = Math.Clamp(settings.TyreWearOverlay.Opacity, _tyreWearOpacity.Minimum, _tyreWearOpacity.Maximum);
+        _tyreWearScale.Value = Math.Clamp(settings.TyreWearOverlay.Scale, _tyreWearScale.Minimum, _tyreWearScale.Maximum);
         _udpPort.Text = settings.UdpPort.ToString(CultureInfo.InvariantCulture);
         _sensitivity.Value = Math.Clamp(settings.LockupSensitivity, _sensitivity.Minimum, _sensitivity.Maximum);
         _duration.Value = Math.Clamp(settings.GraphDurationSeconds, _duration.Minimum, _duration.Maximum);
@@ -174,16 +208,44 @@ public partial class SettingsWindow : Window
         _toggleDemo.Text = settings.Shortcuts.ToggleDemo;
         _toggleSteering.Text = settings.Shortcuts.ToggleSteering;
         _quit.Text = settings.Shortcuts.Quit;
-
+        RefreshOverlayStatus();
     }
 
     private void SaveClicked(object sender, RoutedEventArgs e)
     {
+        SavePending(showSuccess: true);
+    }
+
+    private bool SavePending(bool showSuccess)
+    {
+        // A drag is persisted by App immediately. Merge those latest positions
+        // into this form before building another candidate, unless the user
+        // deliberately pressed Reset position in this form.
+        if (_currentSettings is not null)
+        {
+            AppSettings current = _currentSettings();
+            if (!_pedalsPositionReset)
+            {
+                _pendingPedalsOverlay = _pendingPedalsOverlay with
+                {
+                    Left = current.PedalsOverlay.Left,
+                    Top = current.PedalsOverlay.Top,
+                };
+            }
+            if (!_tyreWearPositionReset)
+            {
+                _pendingTyreWearOverlay = _pendingTyreWearOverlay with
+                {
+                    Left = current.TyreWearOverlay.Left,
+                    Top = current.TyreWearOverlay.Top,
+                };
+            }
+        }
         if (!TryReadDouble(_transparency.Value, 0.2, 1, "Overlay transparency", out double transparency)
             || !TryReadInt(_udpPort, 1, 65535, "UDP port", out int port)
             || !TryReadDouble(_sensitivity.Value, 0.15, 0.9, "Lock-up sensitivity", out double sensitivity)
             || !TryReadDouble(_duration.Value, 2, 15, "Graph duration", out double duration)
-            || !ValidateColors()) return;
+            || !ValidateColors()) return false;
 
         AppSettings candidate = new(
             _steeringDefault.IsChecked == true,
@@ -193,24 +255,479 @@ public partial class SettingsWindow : Window
             duration,
             new ShortcutSettings(_toggleVisibility.Text.Trim(), _toggleLock.Text.Trim(), _toggleDemo.Text.Trim(),
                 _toggleSteering.Text.Trim(), _quit.Text.Trim()),
-            _initial.LockupColorMode,
-            new LockupColorSettings(_initial.LockupColors.Front, _initial.LockupColors.Rear, _initial.LockupColors.Both, _singleColor.Text.Trim()))
+            _pendingLockupColorMode,
+            _pendingLockupColors with { Single = _singleColor.Text.Trim() })
         {
             SteeringPosition = _steeringPosition.SelectedIndex == 1 ? SteeringPosition.Right : SteeringPosition.Left,
-            PedalsOverlay = _pendingPedalsOverlay with { Opacity = transparency },
-            TyreWearOverlay = _pendingTyreWearOverlay with { Enabled = _tyreWearEnabled.IsChecked == true },
+            PedalsOverlay = _pendingPedalsOverlay with
+            {
+                Enabled = _pedalsEnabled.IsChecked == true,
+                Locked = _pedalsLocked.IsChecked == true,
+                Opacity = transparency,
+                Scale = Math.Clamp(_pedalsScale.Value, 0.5, 2),
+            },
+            TyreWearOverlay = _pendingTyreWearOverlay with
+            {
+                Enabled = _tyreWearEnabled.IsChecked == true,
+                Locked = _tyreWearLocked.IsChecked == true,
+                Opacity = Math.Clamp(_tyreWearOpacity.Value, 0.2, 1),
+                Scale = Math.Clamp(_tyreWearScale.Value, 0.5, 2),
+            },
         };
 
         (bool ok, string error) = _save(candidate);
         if (!ok)
         {
             WpfMessageBox.Show(this, error, "Settings not saved", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        _initial = _currentSettings?.Invoke() ?? candidate;
+        _pendingPedalsOverlay = _initial.PedalsOverlay;
+        _pendingTyreWearOverlay = _initial.TyreWearOverlay;
+        _pendingLockupColorMode = _initial.LockupColorMode;
+        _pendingLockupColors = _initial.LockupColors;
+        _pedalsPositionReset = false;
+        _tyreWearPositionReset = false;
+        if (showSuccess) ShowSnackbar("Settings saved successfully.");
+        RefreshOverlayStatus();
+        return true;
+    }
+
+    internal void Navigate(string page) => SelectPage(page);
+
+    internal bool IsArranging => _arranging;
+
+    internal void SetArrangeMode(bool arranging)
+    {
+        _arranging = arranging;
+        if (_arrangeButton is not null) _arrangeButton.Visibility = arranging ? Visibility.Collapsed : Visibility.Visible;
+        if (_doneArrangeButton is not null) _doneArrangeButton.Visibility = arranging ? Visibility.Visible : Visibility.Collapsed;
+        RefreshOverlayStatus();
+    }
+
+    private void ArrangeOverlaysClicked(object sender, RoutedEventArgs e)
+    {
+        // Arrangement is transactional: validate and persist the pending form
+        // first. A failed save must never expose temporary drag state.
+        if (!SavePending(showSuccess: false)) return;
+        if (_beginArrange is not null && !_beginArrange())
+        {
+            ShowSnackbar("Arrange mode could not be started.");
             return;
         }
 
-        _pendingPedalsOverlay = candidate.PedalsOverlay;
-        _pendingTyreWearOverlay = candidate.TyreWearOverlay;
-        ShowSnackbar("Settings saved successfully.");
+        SetArrangeMode(true);
+        ShowSnackbar("Drag enabled overlays, then choose Done arranging.");
+    }
+
+    private void DoneArrangingClicked(object sender, RoutedEventArgs e)
+    {
+        _endArrange?.Invoke();
+        SetArrangeMode(false);
+        ShowSnackbar("Arrangement saved.");
+    }
+
+    private void WireNavigation()
+    {
+        Button[] buttons =
+        [
+            DashboardNavigationButton,
+            OverlaysNavigationButton,
+            ConnectionNavigationButton,
+            AppearanceNavigationButton,
+            ShortcutsNavigationButton,
+        ];
+        foreach (Button button in buttons)
+        {
+            button.Click += (_, _) => SelectPage((string)button.Tag);
+        }
+        _pages["Dashboard"] = DashboardPage;
+        _pages["Overlays"] = OverlaysPage;
+        _pages["Connection"] = ConnectionPage;
+        _pages["Appearance"] = AppearancePage;
+        _pages["Shortcuts"] = ShortcutsPage;
+    }
+
+    private void SelectPage(string page)
+    {
+        if (!_pages.TryGetValue(page, out StackPanel? selected)) return;
+        foreach ((string name, StackPanel panel) in _pages)
+        {
+            panel.Visibility = ReferenceEquals(panel, selected) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        PageTitleText.Text = page;
+        PageSubtitleText.Text = page switch
+        {
+            "Dashboard" => "A concise view of connection health and enabled widgets.",
+            "Overlays" => "Arrange and tune the widgets shown over F1 25.",
+            "Connection" => "Choose the UDP port used by the telemetry receiver.",
+            "Appearance" => "Tune steering placement, graph timing, and lock-up colour.",
+            "Shortcuts" => "Capture global shortcuts for common overlay actions.",
+            _ => string.Empty,
+        };
+
+        Button[] buttons =
+        [
+            DashboardNavigationButton,
+            OverlaysNavigationButton,
+            ConnectionNavigationButton,
+            AppearanceNavigationButton,
+            ShortcutsNavigationButton,
+        ];
+        foreach (Button button in buttons)
+        {
+            bool isSelected = string.Equals((string)button.Tag, page, StringComparison.Ordinal);
+            button.Background = isSelected ? Brush("#32191B") : Brush("#0D1116");
+            button.BorderBrush = isSelected ? Brush("#E10600") : Brush("#0D1116");
+            button.FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Normal;
+        }
+
+        SettingsScrollViewer.ScrollToTop();
+    }
+
+    private void BuildDashboardPage()
+    {
+        TextBlock status = new()
+        {
+            Name = "DashboardConnectionStatus",
+            FontSize = 20,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush("#F5F7FA"),
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+        TextBlock details = new()
+        {
+            Text = "Telemetry receiver status",
+            Foreground = Brush("#AAB5C2"),
+            FontSize = 12,
+        };
+        _dashboardStatusText = status;
+        TextBlock summary = new()
+        {
+            Name = "DashboardOverlaySummary",
+            Foreground = Brush("#D7DEE6"),
+            FontSize = 13,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        _dashboardOverlaySummary = summary;
+        DashboardPage.Children.Add(Section("Connection", "Live state from the F1 25 UDP receiver.", status, details));
+        DashboardPage.Children.Add(Section("Overlay summary", "Only enabled widgets are shown in-game.", summary));
+        DashboardPage.Children.Add(Section("Quick navigation", "Use the sidebar to tune a page, then save when ready.",
+            NavigationHint("Overlays", "Arrange, enable, lock, scale, and set opacity."),
+            NavigationHint("Connection", "Change the UDP port and confirm receiver state."),
+            NavigationHint("Appearance", "Place steering and calibrate lock-up colour."),
+            NavigationHint("Shortcuts", "Capture and review global keyboard shortcuts.")));
+    }
+
+    private FrameworkElement NavigationHint(string page, string copy)
+    {
+        Button button = new()
+        {
+            Content = $"{page}  ›  {copy}",
+            Tag = page,
+            Style = (Style)FindResource("SidebarButtonStyle"),
+            HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left,
+            Margin = new Thickness(0, 1, 0, 1),
+        };
+        button.Click += (_, _) => SelectPage(page);
+        return button;
+    }
+
+    private void BuildOverlaysPage()
+    {
+        TextBlock intro = new()
+        {
+            Text = "Each widget keeps its own visibility, position, lock, scale, and opacity.",
+            Foreground = Brush("#AAB5C2"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 14),
+        };
+        OverlaysPage.Children.Add(intro);
+        OverlaysPage.Children.Add(CreateOverlayCard(
+            "PEDALS & INPUTS",
+            "Live throttle, brake, steering and input history.",
+            false,
+            CreatePedalPreview(),
+            _pedalsEnabled,
+            _pedalsLocked,
+            _transparency,
+            _pedalsScale,
+            () => _pendingPedalsOverlay,
+            value => _pendingPedalsOverlay = value));
+        OverlaysPage.Children.Add(CreateOverlayCard(
+            "TYRE WEAR",
+            "Four-corner tyre degradation at a glance.",
+            true,
+            CreateTyrePreview(),
+            _tyreWearEnabled,
+            _tyreWearLocked,
+            _tyreWearOpacity,
+            _tyreWearScale,
+            () => _pendingTyreWearOverlay,
+            value => _pendingTyreWearOverlay = value));
+
+        StackPanel arrangePanel = new() { Margin = new Thickness(0, 4, 0, 8) };
+        _arrangeButton = new Button
+        {
+            Content = "ARRANGE OVERLAYS",
+            Style = (Style)FindResource("PrimaryButtonStyle"),
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            Padding = new Thickness(18, 10, 18, 10),
+            ToolTip = "Save the current form, then drag enabled overlays into place.",
+        };
+        RegisterDynamicName("ArrangeOverlaysButton", _arrangeButton);
+        _arrangeButton.Click += ArrangeOverlaysClicked;
+        _doneArrangeButton = new Button
+        {
+            Content = "Done arranging",
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            Padding = new Thickness(18, 10, 18, 10),
+            Visibility = Visibility.Collapsed,
+        };
+        RegisterDynamicName("DoneArrangingButton", _doneArrangeButton);
+        _doneArrangeButton.Click += DoneArrangingClicked;
+        arrangePanel.Children.Add(_arrangeButton);
+        arrangePanel.Children.Add(_doneArrangeButton);
+        arrangePanel.Children.Add(new TextBlock
+        {
+            Text = "Tip: enable only the widgets you want to move. Their saved lock choice returns when you finish.",
+            Foreground = Brush("#AAB5C2"),
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 8, 0, 0),
+        });
+        OverlaysPage.Children.Add(arrangePanel);
+    }
+
+    private FrameworkElement CreateOverlayCard(string title, string description, bool tyreWear,
+        FrameworkElement preview, CheckBox enabled, CheckBox locked, Slider opacity, Slider scale,
+        Func<OverlayWidgetSettings> read, Action<OverlayWidgetSettings> write)
+    {
+        enabled.Content = "Enabled";
+        locked.Content = "Lock position";
+        RegisterDynamicName(tyreWear ? "TyreWearEnabledToggle" : "PedalsEnabledToggle", enabled);
+        RegisterDynamicName(tyreWear ? "TyreWearLockedToggle" : "PedalsLockedToggle", locked);
+        RegisterDynamicName(tyreWear ? "TyreWearOpacitySlider" : "PedalsOpacitySlider", opacity);
+        RegisterDynamicName(tyreWear ? "TyreWearScaleSlider" : "PedalsScaleSlider", scale);
+
+        TextBlock status = new()
+        {
+            Foreground = Brush("#AAB5C2"),
+            FontSize = 11,
+            Margin = new Thickness(0, 5, 0, 0),
+        };
+        RegisterDynamicName(tyreWear ? "TyreWearStatusText" : "PedalsStatusText", status);
+
+        enabled.Checked += (_, _) => { write(read() with { Enabled = true }); RefreshOverlayStatus(); };
+        enabled.Unchecked += (_, _) => { write(read() with { Enabled = false }); RefreshOverlayStatus(); };
+        locked.Checked += (_, _) => { write(read() with { Locked = true }); RefreshOverlayStatus(); };
+        locked.Unchecked += (_, _) => { write(read() with { Locked = false }); RefreshOverlayStatus(); };
+        opacity.ValueChanged += (_, _) => { if (opacity.IsLoaded) write(read() with { Opacity = opacity.Value }); };
+        scale.ValueChanged += (_, _) => { if (scale.IsLoaded) write(read() with { Scale = scale.Value }); };
+
+        Expander configure = new()
+        {
+            Header = new TextBlock { Text = "Configure", Foreground = Brush("#D7DEE6"), FontWeight = FontWeights.SemiBold },
+            Foreground = Brush("#F5F7FA"),
+            Margin = new Thickness(0, 12, 0, 0),
+            IsExpanded = true,
+        };
+        StackPanel configureContent = new();
+        configureContent.Children.Add(locked);
+        configureContent.Children.Add(CompactSliderField("Opacity (0.2 - 1.0)", opacity));
+        configureContent.Children.Add(CompactSliderField("Scale (0.5 - 2.0)", scale));
+        Button reset = new()
+        {
+            Content = "Reset position",
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            Padding = new Thickness(12, 6, 12, 6),
+            Margin = new Thickness(0, 2, 0, 0),
+        };
+        RegisterDynamicName(tyreWear ? "TyreWearResetPositionButton" : "PedalsResetPositionButton", reset);
+        reset.Click += (_, _) =>
+        {
+            write(read() with { Left = null, Top = null });
+            if (tyreWear) _tyreWearPositionReset = true;
+            else _pedalsPositionReset = true;
+            status.Text = "Position reset. Save changes to apply.";
+        };
+        configureContent.Children.Add(reset);
+        configure.Content = configureContent;
+
+        Grid content = new();
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(174) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Border previewChrome = new()
+        {
+            Width = 154,
+            Height = 116,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Background = Brush("#0D141C"),
+            BorderBrush = Brush("#2B3744"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(7),
+            Padding = new Thickness(8),
+            Child = preview,
+        };
+        Grid.SetRowSpan(previewChrome, 2);
+        Grid.SetColumn(previewChrome, 0);
+        content.Children.Add(previewChrome);
+
+        StackPanel metadata = new() { Margin = new Thickness(12, 0, 0, 0) };
+        metadata.Children.Add(new TextBlock { Text = title, Foreground = Brush("#F5F7FA"), FontSize = 15, FontWeight = FontWeights.SemiBold });
+        metadata.Children.Add(new TextBlock { Text = description, Foreground = Brush("#AAB5C2"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 5, 0, 8) });
+        metadata.Children.Add(enabled);
+        metadata.Children.Add(status);
+        Grid.SetColumn(metadata, 1);
+        Grid.SetRow(metadata, 0);
+        content.Children.Add(metadata);
+        Grid.SetColumn(configure, 1);
+        Grid.SetRow(configure, 1);
+        content.Children.Add(configure);
+        return new Border
+        {
+            Background = Brush("#151C24"),
+            BorderBrush = Brush("#2B3744"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(9),
+            Padding = new Thickness(16),
+            Margin = new Thickness(0, 0, 0, 12),
+            Child = content,
+        };
+    }
+
+    private FrameworkElement CreatePedalPreview() => new HubPedalPreview { Width = 138, Height = 100, IsHitTestVisible = false };
+
+    private FrameworkElement CreateTyrePreview()
+    {
+        TyreWearSurface preview = new() { Width = 100, Height = 100, IsHitTestVisible = false };
+        preview.Initialize(_initial.TyreWearOverlay);
+        return preview;
+    }
+
+    private void BuildConnectionPage()
+    {
+        _connectionStatusText = new TextBlock { Foreground = Brush("#AAB5C2"), FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        RegisterDynamicName("ConnectionStatusText", _connectionStatusText);
+        ConnectionPage.Children.Add(Section("UDP connection", "The receiver listens for F1 25 telemetry on this local UDP port.",
+            Field("UDP port", _udpPort, _initial.UdpPort.ToString(CultureInfo.InvariantCulture)), _connectionStatusText));
+        ConnectionPage.Children.Add(Section("Connection guidance", "Start or resume a session in F1 25 after saving a new port. The header updates as packets arrive.",
+            new TextBlock { Text = "No telemetry packets or receiver controls are added here; this page only edits the existing connection setting.", Foreground = Brush("#AAB5C2"), TextWrapping = TextWrapping.Wrap }));
+    }
+
+    private void BuildAppearancePage()
+    {
+        _steeringDefault.Content = "Enable steering by default";
+        FrameworkElement colour = ColorField(_singleColor, _initial.LockupColors.Single, out _);
+        AppearancePage.Children.Add(Section("Steering", "Choose the startup preference and which side of the graph carries the steering dial.",
+            _steeringDefault, Field("Steering circle position", _steeringPosition)));
+        AppearancePage.Children.Add(Section("Graph", "These values apply to the existing input history graph.",
+            Field("Graph duration (2 - 15 seconds)", _duration)));
+        AppearancePage.Children.Add(Section("Lock-up", "Tune the detector threshold and the single-colour mode colour. Axle mode keeps its existing front/rear/both colours.",
+            Field("Lock-up sensitivity (0.15 - 0.9)", _sensitivity), colour));
+        AppearancePage.Children.Add(Section("Colour calibration", "The colour picker changes the persisted value; exact in-game colour depends on the configured overlay transparency and game compositor.",
+            new TextBlock { Text = "Use the HSV surface or enter a six-digit value such as #ffd84a.", Foreground = Brush("#AAB5C2"), TextWrapping = TextWrapping.Wrap }));
+    }
+
+    private void BuildShortcutsPage()
+    {
+        ShortcutsPage.Children.Add(Section("Global shortcuts", "Focus a field and press a modifier plus a key. Each shortcut must remain unique and available.",
+            ShortcutField("Show / hide overlays", _toggleVisibility, _initial.Shortcuts.ToggleVisibility),
+            ShortcutField("Lock / unlock positions", _toggleLock, _initial.Shortcuts.ToggleLock),
+            ShortcutField("Toggle demo signal", _toggleDemo, _initial.Shortcuts.ToggleDemo),
+            ShortcutField("Enable steering", _toggleSteering, _initial.Shortcuts.ToggleSteering),
+            ShortcutField("Exit application", _quit, _initial.Shortcuts.Quit)));
+    }
+
+    private void RegisterDynamicName(string name, FrameworkElement control)
+    {
+        control.Name = name;
+        RegisterName(name, control);
+    }
+
+    private void RefreshOverlayStatus()
+    {
+        if (_dashboardOverlaySummary is not null)
+        {
+            string pedals = _pendingPedalsOverlay.Enabled ? "enabled" : "disabled";
+            string tyres = _pendingTyreWearOverlay.Enabled ? "enabled" : "disabled";
+            _dashboardOverlaySummary.Text = $"Pedals & inputs: {pedals}\nTyre wear: {tyres}";
+        }
+
+        RefreshCardStatus(_pendingPedalsOverlay, "PedalsStatusText");
+        RefreshCardStatus(_pendingTyreWearOverlay, "TyreWearStatusText");
+    }
+
+    private void RefreshCardStatus(OverlayWidgetSettings settings, string name)
+    {
+        if (FindName(name) is TextBlock text)
+        {
+            text.Text = settings.Enabled
+                ? $"Enabled · {(settings.Locked ? "Locked" : "Unlocked")}"
+                : "Disabled · hidden in-game";
+        }
+    }
+
+    private void RefreshStatus()
+    {
+        OverlayStatus status = _statusProvider?.Invoke() ?? new OverlayStatus(ConnectionState.Listening, $"Waiting on UDP {_initial.UdpPort}", _initial.UdpPort);
+        string text = status.State switch
+        {
+            ConnectionState.Connected => "F1 25 · Connected",
+            ConnectionState.Listening => $"Waiting on UDP {status.Port}",
+            ConnectionState.Error => string.IsNullOrWhiteSpace(status.Message) ? $"Error · UDP {status.Port}" : $"Error · {status.Message}",
+            _ => status.Message,
+        };
+        HeaderStatusText.Text = text;
+        HeaderStatusText.Foreground = Brush(status.State switch
+        {
+            ConnectionState.Connected => "#42E37C",
+            ConnectionState.Error => "#FF8A7F",
+            _ => "#AAB5C2",
+        });
+        if (_connectionStatusText is not null) _connectionStatusText.Text = text;
+        if (_dashboardStatusText is not null) _dashboardStatusText.Text = text;
+    }
+
+    private static FrameworkElement CompactSliderField(string label, Slider slider)
+    {
+        TextBlock valueText = new()
+        {
+            MinWidth = 42,
+            Margin = new Thickness(8, 0, 0, 0),
+            Foreground = Brush("#F5F7FA"),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            TextAlignment = TextAlignment.Right,
+            FontWeight = FontWeights.SemiBold,
+        };
+        void UpdateValue() => valueText.Text = slider.Value.ToString("0.##", CultureInfo.InvariantCulture);
+        slider.ValueChanged += (_, _) => UpdateValue();
+        UpdateValue();
+
+        Grid sliderRow = new() { Margin = new Thickness(0, 2, 0, 8) };
+        sliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        sliderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(slider, 0);
+        Grid.SetColumn(valueText, 1);
+        sliderRow.Children.Add(slider);
+        sliderRow.Children.Add(valueText);
+
+        StackPanel field = new() { Margin = new Thickness(0, 0, 0, 2) };
+        field.Children.Add(new TextBlock
+        {
+            Text = label,
+            Foreground = Brush("#D7DEE6"),
+            FontSize = 11.5,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        field.Children.Add(sliderRow);
+        return field;
     }
 
     private bool ValidateColors()

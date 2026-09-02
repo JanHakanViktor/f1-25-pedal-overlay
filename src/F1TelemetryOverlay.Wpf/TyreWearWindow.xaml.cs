@@ -26,6 +26,8 @@ public partial class TyreWearWindow : Window
 
     private readonly TyreWearSurface _surface;
     private bool _locked;
+    private bool _persistedLocked;
+    private bool _arranging;
     private bool _dragging;
     private Point _dragStart;
     private double _windowStartLeft;
@@ -66,9 +68,19 @@ public partial class TyreWearWindow : Window
 
     internal void SetLocked(bool locked)
     {
-        _locked = locked;
-        _surface.SetLocked(locked);
-        Cursor = locked ? WpfCursors.Arrow : WpfCursors.SizeAll;
+        _persistedLocked = locked;
+        _locked = _arranging ? false : locked;
+        _surface.SetLocked(_locked);
+        Cursor = _locked ? WpfCursors.Arrow : WpfCursors.SizeAll;
+    }
+
+    internal void SetArrangeMode(bool arranging)
+    {
+        _arranging = arranging;
+        _locked = arranging ? false : _persistedLocked;
+        _surface.SetArrangeMode(arranging);
+        _surface.SetLocked(_locked);
+        Cursor = _locked ? WpfCursors.Arrow : WpfCursors.SizeAll;
     }
 
     internal void UpdateWear(TyreWearTelemetry telemetry) => _surface.SetTelemetry(telemetry);
@@ -185,6 +197,7 @@ internal sealed class TyreWearSurface : FrameworkElement
     private DispatcherTimer? _timer;
     private TyreWearTelemetry? _telemetry;
     private OverlayWidgetSettings _settings = OverlayWidgetSettings.DefaultTyreWear;
+    private bool _arranging;
 
     internal void Initialize(OverlayWidgetSettings settings)
     {
@@ -203,6 +216,12 @@ internal sealed class TyreWearSurface : FrameworkElement
     internal void SetLocked(bool locked)
     {
         Cursor = locked ? WpfCursors.Arrow : WpfCursors.SizeAll;
+        InvalidateVisual();
+    }
+
+    internal void SetArrangeMode(bool arranging)
+    {
+        _arranging = arranging;
         InvalidateVisual();
     }
 
@@ -251,6 +270,15 @@ internal sealed class TyreWearSurface : FrameworkElement
             int column = index % 2;
             Rect cell = new(column * (cellWidth + CellGap), row * (cellHeight + CellGap), cellWidth, cellHeight);
             DrawWheel(drawingContext, cell, values[index]);
+        }
+        if (_arranging)
+        {
+            drawingContext.DrawRectangle(null,
+                new WpfPen(Brush(Color.FromArgb(180, 225, 48, 43)), 1)
+                {
+                    DashStyle = new DashStyle([4, 4], 0),
+                },
+                new Rect(0.5, 0.5, Math.Max(0, width - 1), Math.Max(0, height - 1)));
         }
     }
 
