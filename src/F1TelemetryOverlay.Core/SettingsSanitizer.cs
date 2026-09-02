@@ -10,11 +10,22 @@ public static partial class SettingsSanitizer
         JsonElement input = value.ValueKind == JsonValueKind.Object ? value : default;
         JsonElement shortcuts = GetObject(input, "shortcuts");
         JsonElement colors = GetObject(input, "lockupColors");
+        JsonElement overlays = GetObject(input, "overlays");
+        JsonElement pedalsOverlay = GetObject(overlays, "pedals");
+        JsonElement tyreWearOverlay = GetObject(overlays, "tyreWear");
         AppSettings defaults = AppSettings.Default;
+        double legacyTransparency = Number(input, "overlayTransparency", 0.2, 1, defaults.OverlayTransparency);
+        bool hasPedalsOpacity = TryGet(pedalsOverlay, "opacity", out _);
+        double pedalsOpacity = hasPedalsOpacity
+            ? Number(pedalsOverlay, "opacity", 0.2, 1, defaults.PedalsOverlay.Opacity)
+            : legacyTransparency;
 
         AppSettings sanitized = new AppSettings(
             Boolean(input, "steeringEnabledByDefault", defaults.SteeringEnabledByDefault),
-            Number(input, "overlayTransparency", 0.2, 1, defaults.OverlayTransparency),
+            // Keep the old field synchronized with the nested pedals opacity.
+            // This makes old consumers and newly migrated consumers render the
+            // same widget while preserving legacy files on first load.
+            pedalsOpacity,
             Integer(input, "udpPort", 1, 65535, defaults.UdpPort),
             Number(input, "lockupSensitivity", 0.15, 0.9, defaults.LockupSensitivity),
             Number(input, "graphDurationSeconds", 2, 15, defaults.GraphDurationSeconds),
@@ -34,6 +45,14 @@ public static partial class SettingsSanitizer
             SteeringPosition = String(input, "steeringPosition") == "right"
                 ? SteeringPosition.Right
                 : SteeringPosition.Left,
+            PedalsOverlay = OverlayWidget(
+                pedalsOverlay,
+                defaults.PedalsOverlay,
+                pedalsOpacity),
+            TyreWearOverlay = OverlayWidget(
+                tyreWearOverlay,
+                defaults.TyreWearOverlay,
+                defaults.TyreWearOverlay.Opacity),
         };
 
         return sanitized;
@@ -61,6 +80,28 @@ public static partial class SettingsSanitizer
         TryGet(parent, name, out JsonElement value) && value.ValueKind == JsonValueKind.Object
             ? value
             : default;
+
+    private static OverlayWidgetSettings OverlayWidget(
+        JsonElement input,
+        OverlayWidgetSettings defaults,
+        double fallbackOpacity) =>
+        new(
+            Boolean(input, "enabled", defaults.Enabled),
+            Boolean(input, "locked", defaults.Locked),
+            Number(input, "opacity", 0.2, 1, fallbackOpacity),
+            Number(input, "scale", 0.5, 2, defaults.Scale),
+            Position(input, "left", defaults.Left),
+            Position(input, "top", defaults.Top));
+
+    private static double? Position(JsonElement parent, string name, double? fallback)
+    {
+        if (!TryGet(parent, name, out JsonElement value)) return fallback;
+        if (value.ValueKind == JsonValueKind.Null) return null;
+        return value.ValueKind == JsonValueKind.Number &&
+            value.TryGetDouble(out double position) && double.IsFinite(position)
+            ? position
+            : fallback;
+    }
 
     private static bool Boolean(JsonElement parent, string name, bool fallback) =>
         TryGet(parent, name, out JsonElement value) &&
