@@ -10,6 +10,13 @@ public static class F125PacketParser
     public const int CarTelemetryRecordSize = 60;
     public const int MaximumCars = 22;
     public const int CarTelemetryPacketSize = 1352;
+    public const byte CarDamagePacketId = 10;
+    public const int CarDamagePacketSize = 1041;
+    public const int CarDamageRecordSize = 46;
+    public const int TyreWearOffset = PacketHeaderSize;
+    public const int TyreWearFieldCount = 4;
+    public const int TyreWearFieldSize = sizeof(float);
+    public const int TyreWearFieldsSize = TyreWearFieldCount * TyreWearFieldSize;
     public const byte MotionExPacketId = 13;
     public const int MotionExPacketSize = 237;
     public const int WheelSlipRatioOffset = PacketHeaderSize + 64;
@@ -60,12 +67,55 @@ public static class F125PacketParser
             timestamp);
     }
 
+    public static TyreWearTelemetry? ParseTyreWear(ReadOnlySpan<byte> packet, long timestamp)
+    {
+        if (packet.Length < PacketHeaderSize ||
+            BinaryPrimitives.ReadUInt16LittleEndian(packet) != PacketFormat ||
+            packet[6] != CarDamagePacketId)
+        {
+            return null;
+        }
+
+        int playerCarIndex = packet[27];
+        if (playerCarIndex >= MaximumCars)
+        {
+            return null;
+        }
+
+        int recordOffset = TyreWearOffset + (playerCarIndex * CarDamageRecordSize);
+        if (packet.Length < recordOffset + TyreWearFieldsSize)
+        {
+            return null;
+        }
+
+        float rearLeft = ReadSingle(packet, recordOffset);
+        float rearRight = ReadSingle(packet, recordOffset + TyreWearFieldSize);
+        float frontLeft = ReadSingle(packet, recordOffset + (2 * TyreWearFieldSize));
+        float frontRight = ReadSingle(packet, recordOffset + (3 * TyreWearFieldSize));
+        if (!float.IsFinite(rearLeft) ||
+            !float.IsFinite(rearRight) ||
+            !float.IsFinite(frontLeft) ||
+            !float.IsFinite(frontRight))
+        {
+            return null;
+        }
+
+        return new TyreWearTelemetry(
+            ClampPercentage(rearLeft),
+            ClampPercentage(rearRight),
+            ClampPercentage(frontLeft),
+            ClampPercentage(frontRight),
+            timestamp);
+    }
+
     private static float ReadSingle(ReadOnlySpan<byte> packet, int offset) =>
         BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(packet[offset..]));
 
     private static double ClampInput(float value) => float.IsFinite(value) ? Math.Clamp(value, 0, 1) : 0;
 
     private static double ClampSteering(float value) => float.IsFinite(value) ? Math.Clamp(value, -1, 1) : 0;
+
+    private static double ClampPercentage(float value) => Math.Clamp(value, 0, 100);
 
     private static double FiniteOrZero(float value) => float.IsFinite(value) ? value : 0;
 }

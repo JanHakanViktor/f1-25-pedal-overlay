@@ -39,6 +39,8 @@ public sealed class TelemetryReceiver : IDisposable, IAsyncDisposable
 
     public event Action<PedalTelemetry>? TelemetryReceived;
 
+    public event Action<TyreWearTelemetry>? TyreWearReceived;
+
     public event Action<OverlayStatus>? StatusChanged;
 
     public void Start()
@@ -192,6 +194,13 @@ public sealed class TelemetryReceiver : IDisposable, IAsyncDisposable
                     _lockupDetector.UpdateMotion(motion);
                 }
 
+                continue;
+            }
+
+            TyreWearTelemetry? tyreWear = F125PacketParser.ParseTyreWear(packet, timestamp);
+            if (tyreWear is not null)
+            {
+                TyreWearReceived?.Invoke(tyreWear);
                 continue;
             }
 

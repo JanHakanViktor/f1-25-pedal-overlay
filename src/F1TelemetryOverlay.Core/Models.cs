@@ -46,4 +46,17 @@ public sealed record WheelMotionTelemetry(
         [RearLeftSlipRatio, RearRightSlipRatio, FrontLeftSlipRatio, FrontRightSlipRatio];
 }
 
+public sealed record TyreWearTelemetry(
+    double RearLeftPercentage,
+    double RearRightPercentage,
+    double FrontLeftPercentage,
+    double FrontRightPercentage,
+    long Timestamp)
+{
+    // The packet order is rear-left, rear-right, front-left, front-right.
+    // Keep this mapping explicit for consumers that need all four values.
+    public IReadOnlyList<double> WheelWearPercentage =>
+        [RearLeftPercentage, RearRightPercentage, FrontLeftPercentage, FrontRightPercentage];
+}
+
 public sealed record OverlayStatus(ConnectionState State, string Message, int Port);
