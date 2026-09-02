@@ -37,6 +37,8 @@ public partial class App : System.Windows.Application
     private bool _demoEnabled;
     private int _udpPort;
     private bool _overlaysVisible = true;
+    private bool _isArranging;
+    private bool _arrangePreviousOverlaysVisible = true;
 
     internal AppSettings Settings => _settings;
     internal bool IsLocked => IsEnabledOverlayLocked();
@@ -45,6 +47,7 @@ public partial class App : System.Windows.Application
     internal bool IsOverlayVisible => _overlay?.IsVisible == true || _tyreOverlay?.IsVisible == true;
     internal bool IsTyreWearEnabled => _settings.TyreWearOverlay.Enabled;
     internal bool IsTyreWearVisible => _tyreOverlay?.IsVisible == true;
+    internal bool IsArranging => _isArranging;
     internal PedalTelemetry LastTelemetry => _lastTelemetry;
     internal OverlayStatus LastStatus => _demoEnabled
         ? new OverlayStatus(ConnectionState.Connected, "Demo signal", _udpPort)
@@ -109,6 +112,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        EndArrangeOverlays();
         _demoTimer?.Stop();
         _receiver?.Dispose();
         _shortcutManager?.Dispose();
@@ -154,6 +158,7 @@ public partial class App : System.Windows.Application
 
     internal void SetLocked(bool locked)
     {
+        if (_isArranging) EndArrangeOverlays();
         AppSettings candidate = _settings with
         {
             PedalsOverlay = _settings.PedalsOverlay with { Locked = locked },
@@ -265,10 +270,38 @@ public partial class App : System.Windows.Application
         {
             bool ok = TrySaveSettings(candidate, out string error);
             return (ok, error);
-        });
+        }, BeginArrangeOverlays, EndArrangeOverlays, () => _settings, () => LastStatus);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();
+    }
+
+    internal bool BeginArrangeOverlays()
+    {
+        if (_overlay is null || _tyreOverlay is null) return false;
+        if (_isArranging) return true;
+
+        _arrangePreviousOverlaysVisible = _overlaysVisible;
+        _isArranging = true;
+        _overlaysVisible = true;
+        _overlay.SetArrangeMode(true);
+        _tyreOverlay.SetArrangeMode(true);
+        _settingsWindow?.SetArrangeMode(true);
+        ApplyOverlayVisibility();
+        _tray?.Refresh();
+        return true;
+    }
+
+    internal void EndArrangeOverlays()
+    {
+        if (!_isArranging) return;
+        _isArranging = false;
+        _overlay?.SetArrangeMode(false);
+        _tyreOverlay?.SetArrangeMode(false);
+        _settingsWindow?.SetArrangeMode(false);
+        _overlaysVisible = _arrangePreviousOverlaysVisible;
+        ApplyOverlayVisibility();
+        _tray?.Refresh();
     }
 
     internal void ShowControlMenu()

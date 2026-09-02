@@ -28,6 +28,8 @@ public partial class MainWindow : Window
     private double _windowStartTop;
     private double _scale = 1;
     private bool _widgetLocked;
+    private bool _persistedLocked;
+    private bool _arranging;
 
     internal MainWindow(App app)
     {
@@ -38,6 +40,7 @@ public partial class MainWindow : Window
         // --steering launch preserves its right edge at the correct size.
         _scale = app.Settings.PedalsOverlay.Scale;
         _widgetLocked = app.Settings.PedalsOverlay.Locked;
+        _persistedLocked = _widgetLocked;
         Width = (App.OverlayWidth + (app.IsSteeringEnabled ? App.SteeringWidth : 0)) * _scale;
         Height = App.OverlayHeight * _scale;
         _surface = Surface;
@@ -67,8 +70,17 @@ public partial class MainWindow : Window
 
     internal void SetLocked(bool locked)
     {
-        _widgetLocked = locked;
-        _surface.SetLocked(locked);
+        _persistedLocked = locked;
+        _widgetLocked = _arranging ? false : locked;
+        _surface.SetLocked(_widgetLocked);
+    }
+
+    internal void SetArrangeMode(bool arranging)
+    {
+        _arranging = arranging;
+        _widgetLocked = arranging ? false : _persistedLocked;
+        _surface.SetArrangeMode(arranging);
+        _surface.SetLocked(_widgetLocked);
     }
 
     internal void SetSteeringEnabled(bool enabled)
@@ -259,6 +271,7 @@ internal sealed class OverlaySurface : FrameworkElement
     private bool _steeringEnabled;
     private SteeringPosition _steeringPosition = SteeringPosition.Left;
     private bool _locked;
+    private bool _arranging;
     private AppSettings _settings = AppSettings.Default;
 
     internal void Initialize(App app)
@@ -290,6 +303,12 @@ internal sealed class OverlaySurface : FrameworkElement
     {
         _locked = locked;
         Cursor = locked ? Cursors.Arrow : Cursors.SizeAll;
+        InvalidateVisual();
+    }
+
+    internal void SetArrangeMode(bool arranging)
+    {
+        _arranging = arranging;
         InvalidateVisual();
     }
 
@@ -364,6 +383,16 @@ internal sealed class OverlaySurface : FrameworkElement
             double steeringTop = Math.Max(0, (height - steeringSize) / 2);
             DrawSteering(drawingContext,
                 new Rect(steeringOnRight ? steeringLeft : 0, steeringTop, steeringSize, steeringSize));
+        }
+        if (_arranging)
+        {
+            Pen arrangePen = new(Brush(Color.FromArgb(180, 225, 48, 43)), 1)
+            {
+                DashStyle = new DashStyle([4, 4], 0),
+            };
+            drawingContext.DrawRoundedRectangle(null, arrangePen,
+                new Rect(0.5, 0.5, Math.Max(0, width - 1), Math.Max(0, height - 1)),
+                Math.Min(9, height / 2), Math.Min(9, height / 2));
         }
         drawingContext.Pop();
     }
