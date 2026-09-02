@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Windows;
+using F1TelemetryOverlay.Core;
 using F1TelemetryOverlay.Wpf;
 using Xunit;
 
@@ -19,6 +20,11 @@ public sealed class AppArrangementTests
             try
             {
                 app = new App();
+                SetField(app, "_settings", AppSettings.Default with
+                {
+                    PedalsOverlay = AppSettings.Default.PedalsOverlay with { Locked = true },
+                    TyreWearOverlay = AppSettings.Default.TyreWearOverlay with { Enabled = true, Locked = true },
+                });
                 pedals = new MainWindow(app);
                 tyres = new TyreWearWindow(app);
                 SetField(app, "_overlay", pedals);
@@ -29,11 +35,15 @@ public sealed class AppArrangementTests
                 Assert.True(app.IsArranging);
                 Assert.True((bool)GetField(app, "_overlaysVisible")!);
                 Assert.True(pedals.IsVisible);
+                Assert.False((bool)GetField(pedals, "_widgetLocked")!);
+                Assert.False((bool)GetField(tyres, "_locked")!);
 
                 app.EndArrangeOverlays();
                 Assert.False(app.IsArranging);
                 Assert.False((bool)GetField(app, "_overlaysVisible")!);
                 Assert.False(pedals.IsVisible);
+                Assert.True((bool)GetField(pedals, "_widgetLocked")!);
+                Assert.True((bool)GetField(tyres, "_locked")!);
             }
             catch (Exception exception)
             {

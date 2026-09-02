@@ -1,8 +1,10 @@
 using System.Reflection;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using F1TelemetryOverlay.Core;
 using F1TelemetryOverlay.Wpf;
 using Xunit;
@@ -108,6 +110,40 @@ public sealed class SettingsWindowTests
     }
 
     [Fact]
+    public void HubNavigationShowsOnlySelectedPageOnSta()
+    {
+        Exception? failure = null;
+        Thread thread = new(() =>
+        {
+            try
+            {
+                SettingsWindow window = new(AppSettings.Default, _ => (true, string.Empty));
+                string[] pages = ["Dashboard", "Overlays", "Connection", "Appearance", "Shortcuts"];
+
+                foreach (string selectedPage in pages)
+                {
+                    window.Navigate(selectedPage);
+                    foreach (string page in pages)
+                    {
+                        StackPanel panel = (StackPanel)window.FindName($"{page}Page")!;
+                        Assert.Equal(page == selectedPage ? Visibility.Visible : Visibility.Collapsed, panel.Visibility);
+                    }
+                }
+
+                window.Close();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "STA navigation thread did not finish.");
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact]
     public void ArrangeSavesBeforeBeginAndClosingRestoresOnSta()
     {
         Exception? failure = null;
@@ -144,6 +180,122 @@ public sealed class SettingsWindowTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "STA arrange thread did not finish.");
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact]
+    public void FailedArrangeStartLeavesHubOutOfArrangeModeOnSta()
+    {
+        Exception? failure = null;
+        Thread thread = new(() =>
+        {
+            try
+            {
+                bool beginCalled = false;
+                SettingsWindow window = new(AppSettings.Default, _ => (true, string.Empty), () =>
+                {
+                    beginCalled = true;
+                    return false;
+                }, () => throw new Xunit.Sdk.XunitException("EndArrange must not run after a failed begin."));
+
+                Invoke(window, "ArrangeOverlaysClicked", new object?[] { window, new RoutedEventArgs() });
+
+                Assert.True(beginCalled);
+                Assert.False(window.IsArranging);
+                Assert.Equal(Visibility.Visible, window.FindName("ArrangeOverlaysButton") is Button arrange
+                    ? arrange.Visibility
+                    : Visibility.Collapsed);
+                Assert.Equal(Visibility.Collapsed, window.FindName("DoneArrangingButton") is Button done
+                    ? done.Visibility
+                    : Visibility.Visible);
+                window.Close();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "STA failed-arrange thread did not finish.");
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact]
+    public void FailedArrangeSavePreventsArrangeStartOnSta()
+    {
+        Exception? failure = null;
+        Thread thread = new(() =>
+        {
+            try
+            {
+                bool beginCalled = false;
+                SettingsWindow window = new(AppSettings.Default, _ => (false, "Synthetic save failure"), () =>
+                {
+                    beginCalled = true;
+                    return true;
+                });
+
+                // SavePending displays the product's warning dialog before it
+                // returns false. Close only that native dialog so the test can
+                // observe that the arrange callback was never reached.
+                DispatcherTimer dialogCloser = new(DispatcherPriority.Background)
+                {
+                    Interval = TimeSpan.FromMilliseconds(25),
+                };
+                dialogCloser.Tick += (_, _) =>
+                {
+                    IntPtr dialog = FindWindow(null, "Settings not saved");
+                    if (dialog == IntPtr.Zero) return;
+                    PostMessage(dialog, WmClose, IntPtr.Zero, IntPtr.Zero);
+                    dialogCloser.Stop();
+                };
+                dialogCloser.Start();
+                Invoke(window, "ArrangeOverlaysClicked", new object?[] { window, new RoutedEventArgs() });
+                dialogCloser.Stop();
+
+                Assert.False(beginCalled);
+                Assert.False(window.IsArranging);
+                window.Close();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "STA failed-save thread did not finish.");
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact]
+    public void CancelClosesHubWithoutPersistingPendingCardChangesOnSta()
+    {
+        Exception? failure = null;
+        Thread thread = new(() =>
+        {
+            try
+            {
+                int saves = 0;
+                SettingsWindow window = new(AppSettings.Default, _ =>
+                {
+                    saves++;
+                    return (true, string.Empty);
+                });
+                ((CheckBox)window.FindName("TyreWearEnabledToggle")!).IsChecked = true;
+                ((Button)window.FindName("CancelButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(0, saves);
+                Assert.False(window.IsVisible);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "STA cancel thread did not finish.");
         if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
@@ -334,4 +486,13 @@ public sealed class SettingsWindowTests
     private static void Invoke(SettingsWindow window, string method, object?[] arguments) =>
         typeof(SettingsWindow).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(window, arguments);
+
+    private const uint WmClose = 0x0010;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindow(string? className, string? windowName);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
 }
