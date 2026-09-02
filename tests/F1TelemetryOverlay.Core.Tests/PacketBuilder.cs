@@ -45,6 +45,35 @@ internal static class PacketBuilder
         return packet;
     }
 
+    public static byte[] TyreWear(
+        int playerIndex = 0,
+        float rearLeft = 0,
+        float rearRight = 0,
+        float frontLeft = 0,
+        float frontRight = 0,
+        int? length = null)
+    {
+        byte[] packet = new byte[length ?? F125PacketParser.CarDamagePacketSize];
+        if (packet.Length >= F125PacketParser.PacketHeaderSize)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(packet, F125PacketParser.PacketFormat);
+            packet[6] = F125PacketParser.CarDamagePacketId;
+            packet[27] = (byte)playerIndex;
+        }
+
+        int offset = F125PacketParser.PacketHeaderSize + playerIndex * F125PacketParser.CarDamageRecordSize;
+        if ((uint)playerIndex < F125PacketParser.MaximumCars &&
+            packet.Length >= offset + F125PacketParser.TyreWearFieldsSize)
+        {
+            WriteSingle(packet, offset, rearLeft);
+            WriteSingle(packet, offset + F125PacketParser.TyreWearFieldSize, rearRight);
+            WriteSingle(packet, offset + (2 * F125PacketParser.TyreWearFieldSize), frontLeft);
+            WriteSingle(packet, offset + (3 * F125PacketParser.TyreWearFieldSize), frontRight);
+        }
+
+        return packet;
+    }
+
     private static void WriteSingle(byte[] packet, int offset, float value) =>
         BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(offset), BitConverter.SingleToInt32Bits(value));
 }
