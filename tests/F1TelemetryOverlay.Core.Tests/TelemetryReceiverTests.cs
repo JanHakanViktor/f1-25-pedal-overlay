@@ -47,6 +47,31 @@ public sealed class TelemetryReceiverTests
     }
 
     [Fact]
+    public async Task ReceivesTyreWearWithoutRaisingPedalTelemetry()
+    {
+        int port = GetFreeUdpPort();
+        await using TelemetryReceiver receiver = new(port);
+        TaskCompletionSource<TyreWearTelemetry> tyreWear = NewCompletionSource<TyreWearTelemetry>();
+        int pedalTelemetryCount = 0;
+        receiver.TelemetryReceived += _ => Interlocked.Increment(ref pedalTelemetryCount);
+        receiver.TyreWearReceived += value => tyreWear.TrySetResult(value);
+        receiver.Start();
+
+        using UdpClient sender = new();
+        await sender.SendAsync(
+            PacketBuilder.TyreWear(2, 11.5f, 23.25f, 45.75f, 67.125f),
+            new IPEndPoint(IPAddress.Loopback, port));
+
+        TyreWearTelemetry received = await tyreWear.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.Equal(11.5, received.RearLeftPercentage, 4);
+        Assert.Equal(23.25, received.RearRightPercentage, 4);
+        Assert.Equal(45.75, received.FrontLeftPercentage, 4);
+        Assert.Equal(67.125, received.FrontRightPercentage, 4);
+        Assert.Equal(0, Volatile.Read(ref pedalTelemetryCount));
+    }
+
+    [Fact]
     public async Task ReportsExclusivePortConflict()
     {
         int port = GetFreeUdpPort();

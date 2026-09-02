@@ -34,6 +34,22 @@ public sealed class F125PacketParserTests
     }
 
     [Fact]
+    public void ParsesSelectedPlayerCarTyreWearInRearLeftRearRightFrontLeftFrontRightOrder()
+    {
+        TyreWearTelemetry? result = F125PacketParser.ParseTyreWear(
+            PacketBuilder.TyreWear(3, 12.5f, 34.25f, 56.75f, 78.125f),
+            5678);
+
+        Assert.NotNull(result);
+        Assert.Equal(5678, result.Timestamp);
+        Assert.Equal(12.5, result.RearLeftPercentage, 4);
+        Assert.Equal(34.25, result.RearRightPercentage, 4);
+        Assert.Equal(56.75, result.FrontLeftPercentage, 4);
+        Assert.Equal(78.125, result.FrontRightPercentage, 4);
+        Assert.Equal([12.5, 34.25, 56.75, 78.125], result.WheelWearPercentage, new ApproximateComparer());
+    }
+
+    [Fact]
     public void RejectsWrongFormatPacketTypeAndPlayerIndex()
     {
         byte[] wrongFormat = PacketBuilder.Pedals();
@@ -44,6 +60,15 @@ public sealed class F125PacketParserTests
         Assert.Null(F125PacketParser.ParsePedals(wrongFormat, 1));
         Assert.Null(F125PacketParser.ParsePedals(wrongType, 1));
         Assert.Null(F125PacketParser.ParsePedals(PacketBuilder.Pedals(22), 1));
+
+        byte[] wrongTyreFormat = PacketBuilder.TyreWear();
+        BinaryPrimitives.WriteUInt16LittleEndian(wrongTyreFormat, 2024);
+        byte[] wrongTyreType = PacketBuilder.TyreWear();
+        wrongTyreType[6] = F125PacketParser.CarTelemetryPacketId;
+
+        Assert.Null(F125PacketParser.ParseTyreWear(wrongTyreFormat, 1));
+        Assert.Null(F125PacketParser.ParseTyreWear(wrongTyreType, 1));
+        Assert.Null(F125PacketParser.ParseTyreWear(PacketBuilder.TyreWear(22), 1));
     }
 
     [Theory]
@@ -65,6 +90,20 @@ public sealed class F125PacketParserTests
     }
 
     [Fact]
+    public void TyreWearRequiresSelectedRecordFieldsButNotUnusedTrailingCars()
+    {
+        int exactLength = F125PacketParser.PacketHeaderSize +
+            (3 * F125PacketParser.CarDamageRecordSize) + F125PacketParser.TyreWearFieldsSize;
+        byte[] exact = PacketBuilder.TyreWear(3, frontRight: 42.5f, length: exactLength);
+        byte[] shortPacket = PacketBuilder.TyreWear(3, length: exactLength - 1);
+
+        TyreWearTelemetry? result = F125PacketParser.ParseTyreWear(exact, 1);
+        Assert.NotNull(result);
+        Assert.Equal(42.5, result.FrontRightPercentage, 4);
+        Assert.Null(F125PacketParser.ParseTyreWear(shortPacket, 1));
+    }
+
+    [Fact]
     public void ClampsOutOfRangeAndNonFiniteInputs()
     {
         byte[] packet = PacketBuilder.Pedals(throttle: 1.5f, steering: 2, brake: -0.4f);
@@ -78,6 +117,28 @@ public sealed class F125PacketParserTests
         Assert.Equal(0, result.Throttle);
         Assert.Equal(0, result.Steering);
         Assert.Equal(0, result.Brake);
+    }
+
+    [Fact]
+    public void ClampsFiniteTyreWearToPercentageRange()
+    {
+        TyreWearTelemetry result = Assert.IsType<TyreWearTelemetry>(F125PacketParser.ParseTyreWear(
+            PacketBuilder.TyreWear(rearLeft: -5, rearRight: 12.5f, frontLeft: 100.5f, frontRight: 100),
+            1));
+
+        Assert.Equal(0, result.RearLeftPercentage);
+        Assert.Equal(12.5, result.RearRightPercentage);
+        Assert.Equal(100, result.FrontLeftPercentage);
+        Assert.Equal(100, result.FrontRightPercentage);
+    }
+
+    [Fact]
+    public void RejectsNonFiniteSelectedTyreWearValues()
+    {
+        Assert.Null(F125PacketParser.ParseTyreWear(PacketBuilder.TyreWear(rearLeft: float.NaN), 1));
+        Assert.Null(F125PacketParser.ParseTyreWear(PacketBuilder.TyreWear(rearRight: float.PositiveInfinity), 1));
+        Assert.Null(F125PacketParser.ParseTyreWear(PacketBuilder.TyreWear(frontLeft: float.NegativeInfinity), 1));
+        Assert.Null(F125PacketParser.ParseTyreWear(PacketBuilder.TyreWear(frontRight: float.NaN), 1));
     }
 
     [Fact]
