@@ -1,3 +1,4 @@
+using System.Text.Json;
 using F1TelemetryOverlay.Core;
 
 namespace F1TelemetryOverlay.Core.Tests;
@@ -117,6 +118,17 @@ public sealed class SettingsTests
         string persisted = File.ReadAllText(path);
         Assert.Contains("\"pedals\"", persisted, StringComparison.Ordinal);
         Assert.Contains("\"tyreWear\"", persisted, StringComparison.Ordinal);
+        using JsonDocument document = JsonDocument.Parse(persisted);
+        JsonElement root = document.RootElement;
+        JsonElement overlays = root.GetProperty("overlays");
+        Assert.True(overlays.TryGetProperty("pedals", out JsonElement pedals));
+        Assert.True(overlays.TryGetProperty("tyreWear", out JsonElement tyreWear));
+        Assert.False(overlays.TryGetProperty("tyrewear", out _));
+        Assert.False(root.TryGetProperty("pedalsOverlay", out _));
+        Assert.False(root.TryGetProperty("tyreWearOverlay", out _));
+        Assert.Equal(0.72, pedals.GetProperty("opacity").GetDouble());
+        Assert.Equal(0.88, tyreWear.GetProperty("opacity").GetDouble());
+        Assert.Equal(0.72, root.GetProperty("overlayTransparency").GetDouble());
     }
 
     [Theory]

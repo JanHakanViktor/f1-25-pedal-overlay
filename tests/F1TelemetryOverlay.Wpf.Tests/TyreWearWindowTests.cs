@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Interop;
 using F1TelemetryOverlay.Core;
 using F1TelemetryOverlay.Wpf;
 using Xunit;
@@ -35,7 +36,35 @@ public sealed class TyreWearWindowTests
                 window.Top = 10;
                 window.Show();
                 window.UpdateWear(new TyreWearTelemetry(10, 20, 30, 40, 1));
+                IntPtr handle = new WindowInteropHelper(window).Handle;
+                long extendedStyles = TyreWearNativeMethods.GetWindowLongPtr(
+                    handle, TyreWearNativeMethods.GwlExStyle).ToInt64();
+                Assert.False(window.ShowActivated);
+                Assert.False(window.ShowInTaskbar);
+                Assert.Equal(WindowStyle.None, window.WindowStyle);
+                Assert.True(window.AllowsTransparency);
+                Assert.NotEqual(0, extendedStyles & TyreWearNativeMethods.WsExNoActivate);
+                Assert.NotEqual(0, extendedStyles & TyreWearNativeMethods.WsExToolWindow);
+
+                object surface = typeof(TyreWearWindow).GetField("_surface",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(window)!;
+                object firstTimer = surface.GetType().GetField("_timer",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(surface)!;
+                window.Hide();
+                window.Show();
+                object secondTimer = surface.GetType().GetField("_timer",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(surface)!;
+                Assert.Same(firstTimer, secondTimer);
                 window.ClearWear();
+                double virtualRight = SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth;
+                double virtualBottom = SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight;
+                window.Left = virtualRight + 1000;
+                window.Top = virtualBottom + 1000;
+                window.EnsureVisiblePosition();
+                Assert.True(window.Left < virtualRight);
+                Assert.True(window.Top < virtualBottom);
+                Assert.True(window.Left + window.Width > SystemParameters.VirtualScreenLeft);
+                Assert.True(window.Top + window.Height > SystemParameters.VirtualScreenTop);
                 window.Close();
             }
             catch (Exception exception)
