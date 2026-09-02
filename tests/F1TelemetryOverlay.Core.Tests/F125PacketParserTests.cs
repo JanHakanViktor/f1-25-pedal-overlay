@@ -50,6 +50,37 @@ public sealed class F125PacketParserTests
     }
 
     [Fact]
+    public void ParsesOfficialCarDamageWireLayoutAtLastPlayerRecord()
+    {
+        const int headerSize = 29;
+        const int packetSize = 1041;
+        const int recordSize = 46;
+        const int playerIndex = 21;
+        const int recordOffset = headerSize + (playerIndex * recordSize);
+        byte[] packet = new byte[packetSize];
+
+        BinaryPrimitives.WriteUInt16LittleEndian(packet, 2025);
+        packet[6] = 10;
+        packet[27] = (byte)playerIndex;
+        WriteWireSingle(packet, recordOffset, 1.25f);
+        WriteWireSingle(packet, recordOffset + 4, 2.5f);
+        WriteWireSingle(packet, recordOffset + 8, 3.75f);
+        WriteWireSingle(packet, recordOffset + 12, 5f);
+
+        TyreWearTelemetry? result = F125PacketParser.ParseTyreWear(packet, 5679);
+
+        Assert.NotNull(result);
+        Assert.Equal(5679, result.Timestamp);
+        Assert.Equal(1.25, result.RearLeftPercentage, 4);
+        Assert.Equal(2.5, result.RearRightPercentage, 4);
+        Assert.Equal(3.75, result.FrontLeftPercentage, 4);
+        Assert.Equal(5, result.FrontRightPercentage, 4);
+        Assert.Equal((byte)10, F125PacketParser.CarDamagePacketId);
+        Assert.Equal(packetSize, F125PacketParser.CarDamagePacketSize);
+        Assert.Equal(recordSize, F125PacketParser.CarDamageRecordSize);
+    }
+
+    [Fact]
     public void RejectsWrongFormatPacketTypeAndPlayerIndex()
     {
         byte[] wrongFormat = PacketBuilder.Pedals();
@@ -151,6 +182,9 @@ public sealed class F125PacketParserTests
             F125PacketParser.ParseWheelMotion(PacketBuilder.Motion(float.NaN), 1));
         Assert.Equal(0, result.RearLeftSlipRatio);
     }
+
+    private static void WriteWireSingle(byte[] packet, int offset, float value) =>
+        BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(offset), BitConverter.SingleToInt32Bits(value));
 
     private sealed class ApproximateComparer : IEqualityComparer<double>
     {
