@@ -5,5 +5,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/F1TelemetryOverlay.Core.Tests/F1TelemetryOverlay.Core.Tests.csproj" />
+    <Project Path="tests/F1TelemetryOverlay.Wpf.Tests/F1TelemetryOverlay.Wpf.Tests.csproj" />
   </Folder>
 </Solution>
