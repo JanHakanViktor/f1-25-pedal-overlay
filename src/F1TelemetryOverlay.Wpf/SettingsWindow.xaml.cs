@@ -27,7 +27,13 @@ public partial class SettingsWindow : Window
 {
     private readonly Func<AppSettings, (bool Ok, string Error)> _save;
     private readonly AppSettings _initial;
+    // Widget state is a transactional form baseline. Normal saves preserve
+    // these values (for example, positions moved while the settings window is
+    // open), while Restore defaults deliberately replaces both baselines.
+    private OverlayWidgetSettings _pendingPedalsOverlay;
+    private OverlayWidgetSettings _pendingTyreWearOverlay;
     private readonly CheckBox _steeringDefault = new();
+    private readonly CheckBox _tyreWearEnabled = new();
     private readonly ComboBox _steeringPosition = new();
     private readonly Slider _transparency = new();
     private readonly TextBox _udpPort = new();
@@ -57,6 +63,8 @@ public partial class SettingsWindow : Window
     internal SettingsWindow(AppSettings settings, Func<AppSettings, (bool Ok, string Error)> save)
     {
         _initial = settings;
+        _pendingPedalsOverlay = settings.PedalsOverlay;
+        _pendingTyreWearOverlay = settings.TyreWearOverlay;
         _save = save;
         InitializeComponent();
         SourceInitialized += (_, _) => ApplyNativeChromeTheme();
@@ -101,6 +109,8 @@ public partial class SettingsWindow : Window
     {
         _steeringDefault.Content = "Enable steering by default";
         _steeringDefault.IsChecked = _initial.SteeringEnabledByDefault;
+        _tyreWearEnabled.Content = "Enable tyre wear overlay";
+        _tyreWearEnabled.IsChecked = _initial.TyreWearOverlay.Enabled;
         _steeringPosition.Items.Add("Left side of graph");
         _steeringPosition.Items.Add("Right side of graph");
         _steeringPosition.SelectedIndex = _initial.SteeringPosition == SteeringPosition.Right ? 1 : 0;
@@ -113,6 +123,7 @@ public partial class SettingsWindow : Window
             "Overlay",
             "Set the defaults used when the overlay starts.",
             _steeringDefault,
+            _tyreWearEnabled,
             Field("Steering circle position", _steeringPosition),
             Field("Overlay transparency (0.2 - 1.0)", _transparency),
             Field("UDP port", _udpPort, _initial.UdpPort.ToString(CultureInfo.InvariantCulture)),
@@ -146,7 +157,10 @@ public partial class SettingsWindow : Window
 
     private void PopulateFromSettings(AppSettings settings)
     {
+        _pendingPedalsOverlay = settings.PedalsOverlay;
+        _pendingTyreWearOverlay = settings.TyreWearOverlay;
         _steeringDefault.IsChecked = settings.SteeringEnabledByDefault;
+        _tyreWearEnabled.IsChecked = settings.TyreWearOverlay.Enabled;
         _steeringPosition.SelectedIndex = settings.SteeringPosition == SteeringPosition.Right ? 1 : 0;
         _transparency.Value = Math.Clamp(settings.OverlayTransparency, _transparency.Minimum, _transparency.Maximum);
         _udpPort.Text = settings.UdpPort.ToString(CultureInfo.InvariantCulture);
@@ -179,10 +193,12 @@ public partial class SettingsWindow : Window
             duration,
             new ShortcutSettings(_toggleVisibility.Text.Trim(), _toggleLock.Text.Trim(), _toggleDemo.Text.Trim(),
                 _toggleSteering.Text.Trim(), _quit.Text.Trim()),
-            LockupColorMode.Single,
+            _initial.LockupColorMode,
             new LockupColorSettings(_initial.LockupColors.Front, _initial.LockupColors.Rear, _initial.LockupColors.Both, _singleColor.Text.Trim()))
         {
             SteeringPosition = _steeringPosition.SelectedIndex == 1 ? SteeringPosition.Right : SteeringPosition.Left,
+            PedalsOverlay = _pendingPedalsOverlay with { Opacity = transparency },
+            TyreWearOverlay = _pendingTyreWearOverlay with { Enabled = _tyreWearEnabled.IsChecked == true },
         };
 
         (bool ok, string error) = _save(candidate);
@@ -192,6 +208,8 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        _pendingPedalsOverlay = candidate.PedalsOverlay;
+        _pendingTyreWearOverlay = candidate.TyreWearOverlay;
         ShowSnackbar("Settings saved successfully.");
     }
 

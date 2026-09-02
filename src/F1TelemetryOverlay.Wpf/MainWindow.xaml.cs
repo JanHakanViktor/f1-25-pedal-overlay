@@ -26,6 +26,8 @@ public partial class MainWindow : Window
     private Point _dragStart;
     private double _windowStartLeft;
     private double _windowStartTop;
+    private double _scale = 1;
+    private bool _widgetLocked;
 
     internal MainWindow(App app)
     {
@@ -34,8 +36,10 @@ public partial class MainWindow : Window
         // Width is part of the initial window geometry, not just a drawing
         // concern. Set it before the app positions the window so a startup
         // --steering launch preserves its right edge at the correct size.
-        Width = App.OverlayWidth + (app.IsSteeringEnabled ? App.SteeringWidth : 0);
-        Height = App.OverlayHeight;
+        _scale = app.Settings.PedalsOverlay.Scale;
+        _widgetLocked = app.Settings.PedalsOverlay.Locked;
+        Width = (App.OverlayWidth + (app.IsSteeringEnabled ? App.SteeringWidth : 0)) * _scale;
+        Height = App.OverlayHeight * _scale;
         _surface = Surface;
         _surface.Initialize(app);
         IsVisibleChanged += VisibilityChanged;
@@ -59,8 +63,11 @@ public partial class MainWindow : Window
         _surface.SetTelemetry(telemetry);
     }
 
+    internal event Action<double, double>? DragCompleted;
+
     internal void SetLocked(bool locked)
     {
+        _widgetLocked = locked;
         _surface.SetLocked(locked);
     }
 
@@ -70,9 +77,9 @@ public partial class MainWindow : Window
         // preserved edge down to a physical pixel before changing the width so
         // repeated toggles cannot accumulate a one-pixel drift.
         double right = Math.Floor(Left + Width);
-        double nextWidth = App.OverlayWidth + (enabled ? App.SteeringWidth : 0);
+        double nextWidth = (App.OverlayWidth + (enabled ? App.SteeringWidth : 0)) * _scale;
         Width = nextWidth;
-        Height = App.OverlayHeight;
+        Height = App.OverlayHeight * _scale;
         Left = right - nextWidth;
         _surface.SetSteeringEnabled(enabled);
     }
@@ -84,7 +91,15 @@ public partial class MainWindow : Window
 
     internal void SetDemoEnabled(bool enabled) => _surface.SetDemoEnabled(enabled);
 
-    internal void ApplySettings(AppSettings settings) => _surface.ApplySettings(settings);
+    internal void ApplySettings(AppSettings settings)
+    {
+        double right = IsFinite(Left) && IsFinite(Width) ? Left + Width : double.NaN;
+        _scale = settings.PedalsOverlay.Scale;
+        Width = (App.OverlayWidth + (_app.IsSteeringEnabled ? App.SteeringWidth : 0)) * _scale;
+        Height = App.OverlayHeight * _scale;
+        if (IsFinite(right)) Left = right - Width;
+        _surface.ApplySettings(settings);
+    }
 
     internal void ShowInactive()
     {
@@ -104,9 +119,9 @@ public partial class MainWindow : Window
     {
         if (!IsFinite(Width) || Width <= 0)
         {
-            Width = App.OverlayWidth + (_app.IsSteeringEnabled ? App.SteeringWidth : 0);
+            Width = (App.OverlayWidth + (_app.IsSteeringEnabled ? App.SteeringWidth : 0)) * _scale;
         }
-        if (!IsFinite(Height) || Height <= 0) Height = App.OverlayHeight;
+        if (!IsFinite(Height) || Height <= 0) Height = App.OverlayHeight * _scale;
 
         Rect virtualScreen = new(
             SystemParameters.VirtualScreenLeft,
@@ -141,7 +156,7 @@ public partial class MainWindow : Window
 
     private void SurfaceMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_app.IsLocked || e.ChangedButton != MouseButton.Left) return;
+        if (_widgetLocked || e.ChangedButton != MouseButton.Left) return;
         _dragging = true;
         _dragStart = PointerPositionInDips(e);
         _windowStartLeft = Left;
@@ -152,7 +167,7 @@ public partial class MainWindow : Window
 
     private void SurfaceMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_dragging || _app.IsLocked || e.LeftButton != MouseButtonState.Pressed) return;
+        if (!_dragging || _widgetLocked || e.LeftButton != MouseButtonState.Pressed) return;
         Point current = PointerPositionInDips(e);
         Left = Math.Round(_windowStartLeft + current.X - _dragStart.X);
         Top = Math.Round(_windowStartTop + current.Y - _dragStart.Y);
@@ -189,6 +204,7 @@ public partial class MainWindow : Window
         if (!_dragging) return;
         _dragging = false;
         _surface.ReleaseMouseCapture();
+        DragCompleted?.Invoke(Left, Top);
     }
 
     private IntPtr WindowHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -251,7 +267,7 @@ internal sealed class OverlaySurface : FrameworkElement
         _settings = app.Settings;
         _steeringEnabled = app.IsSteeringEnabled;
         _steeringPosition = _settings.SteeringPosition;
-        _locked = app.IsLocked;
+        _locked = _settings.PedalsOverlay.Locked;
         Cursor = Cursors.SizeAll;
         SnapsToDevicePixels = true;
         UseLayoutRounding = true;
@@ -304,9 +320,11 @@ internal sealed class OverlaySurface : FrameworkElement
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
-        double width = ActualWidth;
-        double height = ActualHeight;
+        double scale = Math.Clamp(_settings.PedalsOverlay.Scale, 0.5, 2);
+        double width = ActualWidth / scale;
+        double height = ActualHeight / scale;
         if (width <= 0 || height <= 0) return;
+        drawingContext.PushTransform(new ScaleTransform(scale, scale));
 
         bool hasSteering = _steeringEnabled;
         bool steeringOnRight = hasSteering && _steeringPosition == SteeringPosition.Right;
@@ -314,7 +332,7 @@ internal sealed class OverlaySurface : FrameworkElement
         Geometry background = CreateRoundedRectangle(new Rect(0.5, 0.5, width - 1, height - 1),
             hasSteering && !steeringOnRight ? height / 2 : radius,
             steeringOnRight ? height / 2 : radius);
-        drawingContext.DrawGeometry(Brush(Color.FromArgb(ClampAlpha(_settings.OverlayTransparency),
+        drawingContext.DrawGeometry(Brush(Color.FromArgb(ClampAlpha(_settings.PedalsOverlay.Opacity),
                 OverlayBackgroundColor.R, OverlayBackgroundColor.G, OverlayBackgroundColor.B)),
             new Pen(Brush(Color.FromArgb(23, 255, 255, 255)), 1), background);
 
@@ -347,6 +365,7 @@ internal sealed class OverlaySurface : FrameworkElement
             DrawSteering(drawingContext,
                 new Rect(steeringOnRight ? steeringLeft : 0, steeringTop, steeringSize, steeringSize));
         }
+        drawingContext.Pop();
     }
 
     private void RenderTick(object? sender, EventArgs e)

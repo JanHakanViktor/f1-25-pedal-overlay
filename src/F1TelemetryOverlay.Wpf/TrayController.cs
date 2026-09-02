@@ -12,6 +12,7 @@ internal sealed class TrayController : IDisposable
     private readonly ToolStripMenuItem _visibilityItem;
     private readonly ToolStripMenuItem _lockItem;
     private readonly ToolStripMenuItem _steeringItem;
+    private readonly ToolStripMenuItem _tyreWearItem;
     private readonly ToolStripMenuItem _settingsItem;
     private readonly ToolStripMenuItem _exitItem;
     private bool _disposed;
@@ -29,15 +30,17 @@ internal sealed class TrayController : IDisposable
         _visibilityItem = new ToolStripMenuItem();
         _lockItem = new ToolStripMenuItem();
         _steeringItem = new ToolStripMenuItem("Enable steering") { CheckOnClick = true };
+        _tyreWearItem = new ToolStripMenuItem("Enable tyre wear overlay") { CheckOnClick = true };
         _exitItem = new ToolStripMenuItem("Exit");
 
         _settingsItem.Click += (_, _) => _app.OpenSettings();
         _visibilityItem.Click += (_, _) => _app.ToggleOverlayVisibility();
         _lockItem.Click += (_, _) => _app.SetLocked(!_app.IsLocked);
         _steeringItem.Click += (_, _) => _app.SetSteeringEnabled(_steeringItem.Checked);
+        _tyreWearItem.Click += (_, _) => _app.SetTyreWearEnabled(_tyreWearItem.Checked);
         _exitItem.Click += (_, _) => _app.Shutdown();
 
-        _menu.Items.AddRange([_settingsItem, _visibilityItem, _lockItem, _steeringItem,
+        _menu.Items.AddRange([_settingsItem, _visibilityItem, _lockItem, _steeringItem, _tyreWearItem,
             new ToolStripSeparator(), _exitItem]);
 
         _notifyIcon = new NotifyIcon
@@ -53,12 +56,14 @@ internal sealed class TrayController : IDisposable
 
     internal void Refresh()
     {
-        _visibilityItem.Text = _app.IsOverlayVisible ? "Hide overlay" : "Show overlay";
+        _visibilityItem.Text = _app.IsOverlayVisible ? "Hide overlays" : "Show overlays";
         _visibilityItem.ShortcutKeyDisplayString = _app.Settings.Shortcuts.ToggleVisibility;
         _lockItem.Text = _app.IsLocked ? "Unlock position" : "Lock position";
         _lockItem.ShortcutKeyDisplayString = _app.Settings.Shortcuts.ToggleLock;
         _steeringItem.Checked = _app.IsSteeringEnabled;
         _steeringItem.ShortcutKeyDisplayString = _app.Settings.Shortcuts.ToggleSteering;
+        _tyreWearItem.Text = _app.IsTyreWearEnabled ? "Disable tyre wear overlay" : "Enable tyre wear overlay";
+        _tyreWearItem.Checked = _app.IsTyreWearEnabled;
         _exitItem.ShortcutKeyDisplayString = _app.Settings.Shortcuts.Quit;
     }
 
