@@ -36,40 +36,42 @@ Use borderless or windowed gameplay for reliable always-on-top behavior. True ex
 
 If Windows asks for network access, allow the application on **Private networks**. Only the local UDP telemetry stream is used; no telemetry is uploaded.
 
-## Tray menu and settings
+## Telemetry Hub and tray menu
 
-Right-click either the overlay itself or its icon beside the Windows clock to open the same menu:
+Right-click either overlay or its icon beside the Windows clock to open the same menu:
 
-- **Settings** opens the separate settings window.
-- **Show/Hide overlay** changes only the overlay's visibility.
-- **Lock/Unlock position** prevents or allows mouse interaction with the overlay.
+- **Telemetry Hub** opens the central settings window.
+- **Show/Hide overlays** changes global visibility for the enabled overlays.
+- **Lock/Unlock positions** prevents or allows mouse interaction with the enabled overlays.
 - **Enable steering** shows or hides the steering gauge.
 - **Exit** closes the application completely.
 
-Settings let you choose whether steering starts enabled, its position, overlay transparency, UDP port, lock-up sensitivity, graph duration, every shortcut key, and the single colour used for every lock-up.
+The Telemetry Hub opens on **Overlays**. Enable **Tyre wear** to show the four-circle tyre widget, then expand **Configure** to set each widget's lock, opacity (0.2–1.0), scale (0.5–2.0), and reset position. **Arrange overlays** saves the current form before temporarily unlocking enabled widgets for dragging; choose **Done arranging** to restore each widget's saved lock choice. Disabled widgets remain hidden.
+
+The **Connection** page retains the UDP port and live receiver status. **Appearance** retains steering startup/position, graph duration, lock-up sensitivity, and the HSV lock-up colour picker. Exact in-game colour can vary with overlay transparency and the game compositor, so use the colour picker as a calibration aid rather than a pixel-perfect guarantee. **Shortcuts** retains every existing global shortcut capture.
 
 ## Default controls
 
-- Drag anywhere on the overlay to position it while it is unlocked.
-- `Ctrl+Shift+O` locks or unlocks its position.
-- `Ctrl+Shift+H` hides or shows it.
+- Drag anywhere on an overlay to position it while it is unlocked, or use **Telemetry Hub → Overlays → Arrange overlays** for a guided session.
+- `Ctrl+Shift+O` locks or unlocks their positions.
+- `Ctrl+Shift+H` hides or shows them.
 - `Ctrl+Shift+D` toggles the built-in demo signal.
 - `Ctrl+Shift+S` toggles the steering gauge.
 - `Ctrl+Shift+Q` exits the application.
 
-All shortcut keys can be changed in **Settings**.
+All shortcut keys can be changed in **Telemetry Hub → Shortcuts**.
 
 ## Simple troubleshooting
 
-- **The overlay is visible but the bars do not move:** Check every F1 25 telemetry setting above. Press `Ctrl+Shift+D` to confirm the overlay itself works with its demo signal.
-- **The overlay disappears behind the game:** Change F1 25 from exclusive fullscreen to borderless mode.
-- **The overlay is hidden and will not reopen:** Find its icon beside the Windows clock, right-click it, and select **Show overlay**. You may need to select the small **^** arrow first.
-- **A shortcut does nothing:** Open **Settings** and choose a combination that is not already used by another application.
+- **The overlays are visible but the bars do not move:** Check every F1 25 telemetry setting above. Press `Ctrl+Shift+D` to confirm the overlays themselves work with the demo signal.
+- **The overlays disappear behind the game:** Change F1 25 from exclusive fullscreen to borderless mode.
+- **The overlays are hidden and will not reopen:** Find the app icon beside the Windows clock, right-click it, and select **Show overlays**. You may need to select the small **^** arrow first.
+- **A shortcut does nothing:** Open **Telemetry Hub → Shortcuts** and choose a combination that is not already used by another application.
 - **The installer is blocked:** Unsigned releases can trigger SmartScreen. Verify the download came from this repository before using **More info → Run anyway**. A signed release removes most of this warning.
 
 ## Port conflicts
 
-Only one application can receive a loopback UDP port reliably on Windows. If port `20777` is already in use, choose another port in the overlay's **Settings** and enter that same port in F1 25.
+Only one application can receive a loopback UDP port reliably on Windows. If port `20777` is already in use, choose another port in **Telemetry Hub → Connection** and enter that same port in F1 25.
 
 ## Build the native application from source
 

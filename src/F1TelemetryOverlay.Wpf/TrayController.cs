@@ -26,7 +26,7 @@ internal sealed class TrayController : IDisposable
             BackColor = Color.FromArgb(32, 35, 40),
             ForeColor = Color.White,
         };
-        _settingsItem = new ToolStripMenuItem("Settings");
+        _settingsItem = new ToolStripMenuItem("Telemetry Hub");
         _visibilityItem = new ToolStripMenuItem();
         _lockItem = new ToolStripMenuItem();
         _steeringItem = new ToolStripMenuItem("Enable steering") { CheckOnClick = true };
@@ -46,7 +46,7 @@ internal sealed class TrayController : IDisposable
         _notifyIcon = new NotifyIcon
         {
             Icon = LoadIcon(),
-            Text = "F1 25 Telemetry Overlay",
+            Text = "F1 25 Telemetry Hub",
             Visible = true,
             ContextMenuStrip = _menu,
         };
