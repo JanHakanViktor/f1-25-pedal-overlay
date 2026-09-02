@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace F1TelemetryOverlay.Core;
 
 public sealed record ShortcutSettings(
@@ -13,6 +15,39 @@ public sealed record LockupColorSettings(
     string Both,
     string Single);
 
+/// <summary>
+/// Persisted state for one independently movable overlay widget.
+/// Positions use WPF logical DIPs rather than physical screen pixels.
+/// </summary>
+public sealed record OverlayWidgetSettings(
+    bool Enabled,
+    bool Locked,
+    double Opacity,
+    double Scale,
+    double? Left,
+    double? Top)
+{
+    public static OverlayWidgetSettings DefaultPedals { get; } = new(
+        Enabled: true,
+        Locked: false,
+        Opacity: 0.3,
+        Scale: 1,
+        Left: null,
+        Top: null);
+
+    public static OverlayWidgetSettings DefaultTyreWear { get; } = new(
+        Enabled: false,
+        Locked: false,
+        Opacity: 0.3,
+        Scale: 1,
+        Left: null,
+        Top: null);
+}
+
+public sealed record OverlaySettings(
+    OverlayWidgetSettings Pedals,
+    OverlayWidgetSettings TyreWear);
+
 public sealed record AppSettings(
     bool SteeringEnabledByDefault,
     double OverlayTransparency,
@@ -26,6 +61,21 @@ public sealed record AppSettings(
     // Added as an init-only property so existing settings files and callers
     // using the original positional constructor remain source-compatible.
     public SteeringPosition SteeringPosition { get; init; } = SteeringPosition.Left;
+
+    // Init-only additions keep the original positional constructor source
+    // compatible while allowing settings.json to gain independently persisted
+    // overlay state.
+    [JsonIgnore]
+    public OverlayWidgetSettings PedalsOverlay { get; init; } = OverlayWidgetSettings.DefaultPedals;
+
+    [JsonIgnore]
+    public OverlayWidgetSettings TyreWearOverlay { get; init; } = OverlayWidgetSettings.DefaultTyreWear;
+
+    // The wire shape is intentionally stable: overlays.pedals and
+    // overlays.tyreWear. The convenience properties above keep call sites
+    // strongly typed and source-compatible with the original settings record.
+    [JsonPropertyName("overlays")]
+    public OverlaySettings Overlays => new(PedalsOverlay, TyreWearOverlay);
 
     public static AppSettings Default { get; } = new(
         SteeringEnabledByDefault: false,

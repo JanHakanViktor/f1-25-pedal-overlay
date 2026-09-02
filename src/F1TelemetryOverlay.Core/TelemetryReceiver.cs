@@ -200,6 +200,11 @@ public sealed class TelemetryReceiver : IDisposable, IAsyncDisposable
             TyreWearTelemetry? tyreWear = F125PacketParser.ParseTyreWear(packet, timestamp);
             if (tyreWear is not null)
             {
+                if (MarkPacketReceived())
+                {
+                    EmitStatus(ConnectionState.Connected, "F1 25 connected");
+                }
+
                 TyreWearReceived?.Invoke(tyreWear);
                 continue;
             }
@@ -210,14 +215,10 @@ public sealed class TelemetryReceiver : IDisposable, IAsyncDisposable
                 continue;
             }
 
-            bool wasDisconnected;
+            bool wasDisconnected = MarkPacketReceived();
             BrakeLockup lockup;
             lock (_gate)
             {
-                long nowTimestamp = _timeProvider.GetTimestamp();
-                wasDisconnected = _lastPacketTimestamp == 0 ||
-                    _timeProvider.GetElapsedTime(_lastPacketTimestamp, nowTimestamp) > DisconnectAfter;
-                _lastPacketTimestamp = nowTimestamp;
                 lockup = _lockupDetector.Detect(telemetry);
             }
 
@@ -227,6 +228,18 @@ public sealed class TelemetryReceiver : IDisposable, IAsyncDisposable
             }
 
             TelemetryReceived?.Invoke(telemetry with { BrakeLockup = lockup });
+        }
+    }
+
+    private bool MarkPacketReceived()
+    {
+        lock (_gate)
+        {
+            long nowTimestamp = _timeProvider.GetTimestamp();
+            bool wasDisconnected = _lastPacketTimestamp == 0 ||
+                _timeProvider.GetElapsedTime(_lastPacketTimestamp, nowTimestamp) > DisconnectAfter;
+            _lastPacketTimestamp = nowTimestamp;
+            return wasDisconnected;
         }
     }
 

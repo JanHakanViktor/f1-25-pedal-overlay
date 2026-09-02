@@ -26,21 +26,25 @@ public partial class App : System.Windows.Application
     private ShortcutManager? _shortcutManager;
     private TrayController? _tray;
     private MainWindow? _overlay;
+    private TyreWearWindow? _tyreOverlay;
     private SettingsWindow? _settingsWindow;
     private DispatcherTimer? _demoTimer;
     private AppSettings _settings = AppSettings.Default;
     private PedalTelemetry _lastTelemetry = EmptyTelemetry();
+    private TyreWearTelemetry? _lastTyreWear;
     private OverlayStatus _lastStatus = new(ConnectionState.Listening, "", 20777);
-    private bool _locked;
     private bool _steeringEnabled;
     private bool _demoEnabled;
     private int _udpPort;
+    private bool _overlaysVisible = true;
 
     internal AppSettings Settings => _settings;
-    internal bool IsLocked => _locked;
+    internal bool IsLocked => IsEnabledOverlayLocked();
     internal bool IsSteeringEnabled => _steeringEnabled;
     internal bool IsDemoEnabled => _demoEnabled;
-    internal bool IsOverlayVisible => _overlay?.IsVisible == true;
+    internal bool IsOverlayVisible => _overlay?.IsVisible == true || _tyreOverlay?.IsVisible == true;
+    internal bool IsTyreWearEnabled => _settings.TyreWearOverlay.Enabled;
+    internal bool IsTyreWearVisible => _tyreOverlay?.IsVisible == true;
     internal PedalTelemetry LastTelemetry => _lastTelemetry;
     internal OverlayStatus LastStatus => _demoEnabled
         ? new OverlayStatus(ConnectionState.Connected, "Demo signal", _udpPort)
@@ -74,8 +78,17 @@ public partial class App : System.Windows.Application
         _overlay = new MainWindow(this);
         _overlay.SourceInitialized += OverlaySourceInitialized;
         _overlay.Closed += (_, _) => Shutdown();
-        PositionOverlay(_overlay);
+        _overlay.DragCompleted += SavePedalsPosition;
+        PositionOverlay(_overlay, _settings.PedalsOverlay);
+        // Create the hidden pedal HWND even when a migrated configuration has
+        // disabled that widget; the shared hotkey manager still needs one
+        // stable native owner so the tray can re-enable it later.
         _overlay.ShowInactive();
+
+        _tyreOverlay = new TyreWearWindow(this);
+        _tyreOverlay.DragCompleted += SaveTyreWearPosition;
+        PositionTyreOverlay(_tyreOverlay, _settings.TyreWearOverlay);
+        ApplyOverlayVisibility();
 
         _tray = new TrayController(this);
         _receiver = new TelemetryReceiver(_udpPort)
@@ -83,6 +96,7 @@ public partial class App : System.Windows.Application
             LockupSensitivity = _settings.LockupSensitivity,
         };
         _receiver.TelemetryReceived += ReceiveTelemetry;
+        _receiver.TyreWearReceived += ReceiveTyreWear;
         _receiver.StatusChanged += ReceiveStatus;
         _receiver.Start();
 
@@ -99,6 +113,7 @@ public partial class App : System.Windows.Application
         _receiver?.Dispose();
         _shortcutManager?.Dispose();
         _tray?.Dispose();
+        _tyreOverlay?.Close();
         if (_ownsSingleInstanceMutex) _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();
         base.OnExit(e);
@@ -119,28 +134,63 @@ public partial class App : System.Windows.Application
 
     internal void ShowOverlay()
     {
-        if (_overlay is null) return;
-        _overlay.ShowInactive();
+        _overlaysVisible = true;
+        ApplyOverlayVisibility();
         _tray?.Refresh();
     }
 
     internal void HideOverlay()
     {
-        _overlay?.Hide();
+        _overlaysVisible = false;
+        ApplyOverlayVisibility();
         _tray?.Refresh();
     }
 
     internal void ToggleOverlayVisibility()
     {
-        if (_overlay?.IsVisible == true) HideOverlay();
+        if (IsOverlayVisible) HideOverlay();
         else ShowOverlay();
     }
 
     internal void SetLocked(bool locked)
     {
-        _locked = locked;
-        _overlay?.SetLocked(locked);
+        AppSettings candidate = _settings with
+        {
+            PedalsOverlay = _settings.PedalsOverlay with { Locked = locked },
+            TyreWearOverlay = _settings.TyreWearOverlay with { Locked = locked },
+        };
+        // Keep the in-memory state authoritative even if the settings file is
+        // temporarily unavailable. This makes lock/unlock deterministic for
+        // the current session and avoids a half-locked pair of widgets.
+        _settings = candidate;
+        try
+        {
+            if (_settingsStore is not null) _settings = _settingsStore.Save(candidate);
+        }
+        catch (IOException exception)
+        {
+            Debug.WriteLine($"Could not persist overlay lock state: {exception.Message}");
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Debug.WriteLine($"Could not persist overlay lock state: {exception.Message}");
+        }
+        _overlay?.SetLocked(_settings.PedalsOverlay.Locked);
+        _tyreOverlay?.SetLocked(_settings.TyreWearOverlay.Locked);
         _tray?.Refresh();
+    }
+
+    internal void SetTyreWearEnabled(bool enabled)
+    {
+        if (_settings.TyreWearOverlay.Enabled == enabled) return;
+        AppSettings candidate = _settings with
+        {
+            TyreWearOverlay = _settings.TyreWearOverlay with { Enabled = enabled },
+        };
+        if (!TrySaveSettings(candidate, out _))
+        {
+            _tray?.Refresh();
+        }
     }
 
     internal void SetSteeringEnabled(bool enabled)
@@ -182,6 +232,18 @@ public partial class App : System.Windows.Application
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                 _lastTelemetry = demoTelemetry;
                 _overlay?.UpdateTelemetry(demoTelemetry);
+
+                // Keep all four degradation bands visible in demo mode while
+                // retaining deterministic, gently moving values for a useful
+                // visual smoke check.
+                double frontLeft = 20 + (Math.Sin(seconds * 0.71) + 1) * 8;
+                double frontRight = 42 + (Math.Sin(seconds * 0.53 + 0.8) + 1) * 8;
+                double rearLeft = 57 + (Math.Sin(seconds * 0.43 + 1.6) + 1) * 10;
+                double rearRight = 75 + (Math.Sin(seconds * 0.31 + 2.4) + 1) * 10;
+                TyreWearTelemetry demoWear = new(rearLeft, rearRight, frontLeft, frontRight,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                _lastTyreWear = demoWear;
+                _tyreOverlay?.UpdateWear(demoWear);
             };
             _demoTimer.Start();
         }
@@ -247,6 +309,10 @@ public partial class App : System.Windows.Application
         _receiver?.LockupSensitivity = _settings.LockupSensitivity;
         if (_settings.UdpPort != _udpPort) RestartReceiver(_settings.UdpPort);
         _overlay?.ApplySettings(_settings);
+        _tyreOverlay?.ApplySettings(_settings);
+        _overlay?.SetLocked(_settings.PedalsOverlay.Locked);
+        _tyreOverlay?.SetLocked(_settings.TyreWearOverlay.Locked);
+        ApplyOverlayVisibility();
         _tray?.Refresh();
         return true;
     }
@@ -256,7 +322,7 @@ public partial class App : System.Windows.Application
         switch (action)
         {
             case ShortcutAction.ToggleVisibility: ToggleOverlayVisibility(); break;
-            case ShortcutAction.ToggleLock: SetLocked(!_locked); break;
+            case ShortcutAction.ToggleLock: SetLocked(!IsLocked); break;
             case ShortcutAction.ToggleDemo: SetDemoEnabled(!_demoEnabled); break;
             case ShortcutAction.ToggleSteering: SetSteeringEnabled(!_steeringEnabled); break;
             case ShortcutAction.Quit: Shutdown(); break;
@@ -275,9 +341,21 @@ public partial class App : System.Windows.Application
         _overlay?.UpdateTelemetry(telemetry);
     }
 
+    private void ReceiveTyreWear(TyreWearTelemetry telemetry)
+    {
+        if (_demoEnabled) return;
+        _lastTyreWear = telemetry;
+        _tyreOverlay?.UpdateWear(telemetry);
+    }
+
     private void ReceiveStatus(OverlayStatus status)
     {
         _lastStatus = status;
+        if (status.State is ConnectionState.Listening or ConnectionState.Error)
+        {
+            _lastTyreWear = null;
+            _tyreOverlay?.ClearWear();
+        }
     }
 
     private void RestartReceiver(int port)
@@ -290,20 +368,83 @@ public partial class App : System.Windows.Application
             LockupSensitivity = _settings.LockupSensitivity,
         };
         _receiver.TelemetryReceived += ReceiveTelemetry;
+        _receiver.TyreWearReceived += ReceiveTyreWear;
         _receiver.StatusChanged += ReceiveStatus;
         _receiver.Start();
     }
 
-    private void PositionOverlay(MainWindow window)
+    private void PositionOverlay(MainWindow window, OverlayWidgetSettings settings)
     {
         // WPF window coordinates are DIPs. WinForms Screen.WorkingArea is in
         // physical pixels, so mixing the two places the window off-screen on
         // a scaled display (for example, at 150% DPI).
         Rect area = SystemParameters.WorkArea;
-        int width = OverlayWidth + (_steeringEnabled ? SteeringWidth : 0);
-        window.Left = area.Left + area.Width - width - 40d;
-        window.Top = area.Top + (area.Height - OverlayHeight) / 2d;
+        double fallbackLeft = area.Left + area.Width - window.Width - 40d;
+        double fallbackTop = area.Top + (area.Height - window.Height) / 2d;
+        window.Left = settings.Left is double left && double.IsFinite(left) ? left : fallbackLeft;
+        window.Top = settings.Top is double top && double.IsFinite(top) ? top : fallbackTop;
+        window.EnsureVisiblePosition();
     }
+
+    private void PositionTyreOverlay(TyreWearWindow window, OverlayWidgetSettings settings)
+    {
+        Rect area = SystemParameters.WorkArea;
+        double fallbackLeft = area.Left + area.Width - window.Width - 40d;
+        double fallbackTop = area.Top + Math.Clamp(
+            TyreWearWindow.DefaultTopOffset, 0, Math.Max(0, area.Height - window.Height));
+        window.Left = settings.Left is double left && double.IsFinite(left) ? left : fallbackLeft;
+        window.Top = settings.Top is double top && double.IsFinite(top) ? top : fallbackTop;
+        window.EnsureVisiblePosition();
+    }
+
+    private void ApplyOverlayVisibility()
+    {
+        if (_overlaysVisible)
+        {
+            if (_settings.PedalsOverlay.Enabled) _overlay?.ShowInactive();
+            else _overlay?.Hide();
+            if (_settings.TyreWearOverlay.Enabled) _tyreOverlay?.ShowInactive();
+            else _tyreOverlay?.Hide();
+        }
+        else
+        {
+            _overlay?.Hide();
+            _tyreOverlay?.Hide();
+        }
+    }
+
+    private void SavePedalsPosition(double left, double top) => SaveOverlayPosition(false, left, top);
+
+    private void SaveTyreWearPosition(double left, double top) => SaveOverlayPosition(true, left, top);
+
+    private void SaveOverlayPosition(bool tyreWear, double left, double top)
+    {
+        if (!double.IsFinite(left) || !double.IsFinite(top)) return;
+        AppSettings candidate = tyreWear
+            ? _settings with { TyreWearOverlay = _settings.TyreWearOverlay with { Left = left, Top = top } }
+            : _settings with { PedalsOverlay = _settings.PedalsOverlay with { Left = left, Top = top } };
+        // Retain a successful drag in memory even when the file cannot be
+        // written; the next drag or settings save can retry persistence.
+        _settings = candidate;
+        if (_settingsStore is null) return;
+        try
+        {
+            _settings = _settingsStore.Save(candidate);
+        }
+        catch (IOException exception)
+        {
+            Debug.WriteLine($"Could not persist overlay position: {exception.Message}");
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Debug.WriteLine($"Could not persist overlay position: {exception.Message}");
+        }
+    }
+
+    private bool IsEnabledOverlayLocked() =>
+        (_settings.PedalsOverlay.Enabled || _settings.TyreWearOverlay.Enabled) &&
+        (!_settings.PedalsOverlay.Enabled || _settings.PedalsOverlay.Locked) &&
+        (!_settings.TyreWearOverlay.Enabled || _settings.TyreWearOverlay.Locked);
 
     private static AppSettings SanitizeCandidate(AppSettings candidate)
     {
