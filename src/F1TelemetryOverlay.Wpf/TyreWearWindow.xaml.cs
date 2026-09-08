@@ -291,17 +291,25 @@ internal sealed class TyreWearSurface : FrameworkElement
     {
         Point center = new(cell.Left + (cell.Width / 2), cell.Top + (cell.Height / 2));
         double radius = Math.Max(1, Math.Min(cell.Width, cell.Height) / 2 - 5);
+        bool hasValue = value.HasValue && double.IsFinite(value.Value);
+        Color wearColor = hasValue ? ParseColor(TyreWearVisuals.ColorFor(value.GetValueOrDefault())) : Colors.Transparent;
         drawingContext.DrawEllipse(Brush(Color.FromArgb((byte)DiscAlpha, 8, 13, 19)), null,
             center, radius + 2, radius + 2);
+        if (hasValue)
+        {
+            // A quiet tint covers the entire disc; the opaque arc remains the
+            // stronger indicator of accumulated wear.
+            drawingContext.DrawEllipse(Brush(Color.FromArgb(38, wearColor.R, wearColor.G, wearColor.B)),
+                null, center, radius, radius);
+        }
         drawingContext.DrawEllipse(null,
             new WpfPen(Brush(Color.FromArgb((byte)RingAlpha, 176, 188, 201)), 1.1), center, radius, radius);
 
-        bool hasValue = value.HasValue && double.IsFinite(value.Value);
         if (hasValue)
         {
             double liveValue = value.GetValueOrDefault();
             double sweep = TyreWearVisuals.SweepDegrees(liveValue);
-            WpfPen progressPen = new(Brush(ParseColor(TyreWearVisuals.ColorFor(liveValue))),
+            WpfPen progressPen = new(Brush(wearColor),
                 Math.Max(3.2, radius * 0.14))
             {
                 StartLineCap = PenLineCap.Round,
