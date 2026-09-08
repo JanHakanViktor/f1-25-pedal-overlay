@@ -41,6 +41,8 @@ public sealed class TelemetryReceiver : IDisposable, IAsyncDisposable
 
     public event Action<TyreWearTelemetry>? TyreWearReceived;
 
+    public event Action<TemperatureTelemetry>? TemperaturesReceived;
+
     public event Action<OverlayStatus>? StatusChanged;
 
     public void Start()
@@ -210,16 +212,22 @@ public sealed class TelemetryReceiver : IDisposable, IAsyncDisposable
             }
 
             PedalTelemetry? telemetry = F125PacketParser.ParsePedals(packet, timestamp);
-            if (telemetry is null)
+            TemperatureTelemetry? temperatures = F125PacketParser.ParseTemperatures(packet, timestamp);
+            if (telemetry is null && temperatures is null)
             {
                 continue;
             }
 
             bool wasDisconnected = MarkPacketReceived();
-            BrakeLockup lockup;
-            lock (_gate)
+            if (telemetry is not null)
             {
-                lockup = _lockupDetector.Detect(telemetry);
+                BrakeLockup lockup;
+                lock (_gate)
+                {
+                    lockup = _lockupDetector.Detect(telemetry);
+                }
+
+                telemetry = telemetry with { BrakeLockup = lockup };
             }
 
             if (wasDisconnected)
@@ -227,7 +235,15 @@ public sealed class TelemetryReceiver : IDisposable, IAsyncDisposable
                 EmitStatus(ConnectionState.Connected, "F1 25 connected");
             }
 
-            TelemetryReceived?.Invoke(telemetry with { BrakeLockup = lockup });
+            if (telemetry is not null)
+            {
+                TelemetryReceived?.Invoke(telemetry);
+            }
+
+            if (temperatures is not null)
+            {
+                TemperaturesReceived?.Invoke(temperatures);
+            }
         }
     }
 

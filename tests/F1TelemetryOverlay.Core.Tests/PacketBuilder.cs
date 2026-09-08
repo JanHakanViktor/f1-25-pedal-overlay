@@ -45,6 +45,34 @@ internal static class PacketBuilder
         return packet;
     }
 
+    public static byte[] Temperatures(
+        int playerIndex = 0,
+        ushort[]? brakes = null,
+        byte[]? surfaces = null,
+        byte[]? inners = null,
+        int? length = null)
+    {
+        byte[] packet = Pedals(playerIndex, length: length);
+        int offset = F125PacketParser.PacketHeaderSize + playerIndex * F125PacketParser.CarTelemetryRecordSize;
+        if ((uint)playerIndex < F125PacketParser.MaximumCars &&
+            packet.Length >= offset + F125PacketParser.InnerTemperatureOffset + F125PacketParser.TemperatureWheelCount)
+        {
+            brakes ??= [0, 0, 0, 0];
+            surfaces ??= [0, 0, 0, 0];
+            inners ??= [0, 0, 0, 0];
+            for (int wheel = 0; wheel < F125PacketParser.TemperatureWheelCount; wheel++)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(
+                    packet.AsSpan(offset + F125PacketParser.BrakeTemperatureOffset + (wheel * sizeof(ushort))),
+                    brakes[wheel]);
+                packet[offset + F125PacketParser.SurfaceTemperatureOffset + wheel] = surfaces[wheel];
+                packet[offset + F125PacketParser.InnerTemperatureOffset + wheel] = inners[wheel];
+            }
+        }
+
+        return packet;
+    }
+
     public static byte[] TyreWear(
         int playerIndex = 0,
         float rearLeft = 0,

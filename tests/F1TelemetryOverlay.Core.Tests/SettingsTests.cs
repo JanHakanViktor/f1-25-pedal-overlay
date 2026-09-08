@@ -5,6 +5,16 @@ namespace F1TelemetryOverlay.Core.Tests;
 
 public sealed class SettingsTests
 {
+    [Fact]
+    public void ExistingTwoArgumentOverlaySettingsConstructionGetsTemperatureDefault()
+    {
+        OverlaySettings overlays = new(
+            OverlayWidgetSettings.DefaultPedals,
+            OverlayWidgetSettings.DefaultTyreWear);
+
+        Assert.Equal(OverlayWidgetSettings.DefaultTemperature, overlays.Temperature);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("null")]
@@ -53,6 +63,7 @@ public sealed class SettingsTests
         Assert.Equal("#123456", result.LockupColors.Single);
         Assert.Equal(0.2, result.PedalsOverlay.Opacity);
         Assert.Equal(AppSettings.Default.TyreWearOverlay, result.TyreWearOverlay);
+        Assert.Equal(AppSettings.Default.TemperatureOverlay, result.TemperatureOverlay);
     }
 
     [Fact]
@@ -64,6 +75,7 @@ public sealed class SettingsTests
         Assert.Equal(0.64, result.PedalsOverlay.Opacity);
         Assert.True(result.PedalsOverlay.Enabled);
         Assert.False(result.TyreWearOverlay.Enabled);
+        Assert.Equal(OverlayWidgetSettings.DefaultTemperature, result.TemperatureOverlay);
     }
 
     [Fact]
@@ -74,7 +86,8 @@ public sealed class SettingsTests
               "overlayTransparency": 0.91,
               "overlays": {
                 "pedals": { "enabled": false, "locked": true, "opacity": 0.1, "scale": 3, "left": 120.5, "top": null },
-                "tyreWear": { "enabled": true, "locked": "yes", "opacity": "opaque", "scale": 0.1, "left": "off-screen", "top": 42.25 }
+                "tyreWear": { "enabled": true, "locked": "yes", "opacity": "opaque", "scale": 0.1, "left": "off-screen", "top": 42.25 },
+                "temperature": { "enabled": true, "locked": true, "opacity": 1.4, "scale": 0.25, "left": 77.5, "top": null }
               }
             }
             """);
@@ -91,6 +104,12 @@ public sealed class SettingsTests
         Assert.Equal(0.5, result.TyreWearOverlay.Scale);
         Assert.Null(result.TyreWearOverlay.Left);
         Assert.Equal(42.25, result.TyreWearOverlay.Top);
+        Assert.True(result.TemperatureOverlay.Enabled);
+        Assert.True(result.TemperatureOverlay.Locked);
+        Assert.Equal(1, result.TemperatureOverlay.Opacity);
+        Assert.Equal(0.5, result.TemperatureOverlay.Scale);
+        Assert.Equal(77.5, result.TemperatureOverlay.Left);
+        Assert.Null(result.TemperatureOverlay.Top);
         // The nested pedal opacity is authoritative when both representations
         // are supplied, and the legacy field follows it.
         Assert.Equal(result.PedalsOverlay.Opacity, result.OverlayTransparency);
@@ -106,6 +125,7 @@ public sealed class SettingsTests
         {
             PedalsOverlay = AppSettings.Default.PedalsOverlay with { Opacity = 0.72, Scale = 1.25, Left = 18, Top = 24 },
             TyreWearOverlay = AppSettings.Default.TyreWearOverlay with { Enabled = true, Locked = true, Opacity = 0.88, Scale = 1.4, Left = 500, Top = 300 },
+            TemperatureOverlay = AppSettings.Default.TemperatureOverlay with { Enabled = true, Locked = true, Opacity = 0.76, Scale = 1.1, Left = 250, Top = 125 },
         };
 
         AppSettings saved = store.Save(input);
@@ -113,21 +133,27 @@ public sealed class SettingsTests
 
         Assert.Equal(input.PedalsOverlay, saved.PedalsOverlay);
         Assert.Equal(input.TyreWearOverlay, saved.TyreWearOverlay);
+        Assert.Equal(input.TemperatureOverlay, saved.TemperatureOverlay);
         Assert.Equal(saved.PedalsOverlay, loaded.PedalsOverlay);
         Assert.Equal(saved.TyreWearOverlay, loaded.TyreWearOverlay);
+        Assert.Equal(saved.TemperatureOverlay, loaded.TemperatureOverlay);
         string persisted = File.ReadAllText(path);
         Assert.Contains("\"pedals\"", persisted, StringComparison.Ordinal);
         Assert.Contains("\"tyreWear\"", persisted, StringComparison.Ordinal);
+        Assert.Contains("\"temperature\"", persisted, StringComparison.Ordinal);
         using JsonDocument document = JsonDocument.Parse(persisted);
         JsonElement root = document.RootElement;
         JsonElement overlays = root.GetProperty("overlays");
         Assert.True(overlays.TryGetProperty("pedals", out JsonElement pedals));
         Assert.True(overlays.TryGetProperty("tyreWear", out JsonElement tyreWear));
+        Assert.True(overlays.TryGetProperty("temperature", out JsonElement temperature));
         Assert.False(overlays.TryGetProperty("tyrewear", out _));
         Assert.False(root.TryGetProperty("pedalsOverlay", out _));
         Assert.False(root.TryGetProperty("tyreWearOverlay", out _));
+        Assert.False(root.TryGetProperty("temperatureOverlay", out _));
         Assert.Equal(0.72, pedals.GetProperty("opacity").GetDouble());
         Assert.Equal(0.88, tyreWear.GetProperty("opacity").GetDouble());
+        Assert.Equal(0.76, temperature.GetProperty("opacity").GetDouble());
         Assert.Equal(0.72, root.GetProperty("overlayTransparency").GetDouble());
     }
 

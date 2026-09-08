@@ -35,6 +35,18 @@ public sealed record PedalTelemetry(
     BrakeLockup BrakeLockup,
     long Timestamp);
 
+public sealed record WheelTemperatures(
+    int BrakeCelsius,
+    int SurfaceCelsius,
+    int InnerCelsius);
+
+public sealed record TemperatureTelemetry(
+    WheelTemperatures RearLeft,
+    WheelTemperatures RearRight,
+    WheelTemperatures FrontLeft,
+    WheelTemperatures FrontRight,
+    long Timestamp);
+
 public sealed record WheelMotionTelemetry(
     double RearLeftSlipRatio,
     double RearRightSlipRatio,
