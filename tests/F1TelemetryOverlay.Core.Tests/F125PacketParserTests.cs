@@ -81,6 +81,74 @@ public sealed class F125PacketParserTests
     }
 
     [Fact]
+    public void ParsesOfficialCarTelemetryTemperatureWireLayout()
+    {
+        const int headerSize = 29;
+        const int recordSize = 60;
+        const int playerIndex = 2;
+        int recordOffset = headerSize + playerIndex * recordSize;
+        byte[] packet = new byte[recordOffset + 38];
+        BinaryPrimitives.WriteUInt16LittleEndian(packet, 2025);
+        packet[6] = 6;
+        packet[27] = playerIndex;
+
+        ushort[] brakes = [611, 722, 833, 944];
+        byte[] surfaces = [81, 82, 83, 84];
+        byte[] inners = [91, 92, 93, 94];
+        for (int wheel = 0; wheel < 4; wheel++)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(recordOffset + 22 + wheel * 2), brakes[wheel]);
+            packet[recordOffset + 30 + wheel] = surfaces[wheel];
+            packet[recordOffset + 34 + wheel] = inners[wheel];
+        }
+
+        TemperatureTelemetry result = Assert.IsType<TemperatureTelemetry>(
+            F125PacketParser.ParseTemperatures(packet, 6789));
+
+        Assert.Equal(6789, result.Timestamp);
+        Assert.Equal(new WheelTemperatures(611, 81, 91), result.RearLeft);
+        Assert.Equal(new WheelTemperatures(722, 82, 92), result.RearRight);
+        Assert.Equal(new WheelTemperatures(833, 83, 93), result.FrontLeft);
+        Assert.Equal(new WheelTemperatures(944, 84, 94), result.FrontRight);
+    }
+
+    [Fact]
+    public void ParsesTemperaturesFromSelectedPlayerRecord()
+    {
+        TemperatureTelemetry result = Assert.IsType<TemperatureTelemetry>(F125PacketParser.ParseTemperatures(
+            PacketBuilder.Temperatures(
+                playerIndex: 3,
+                brakes: [501, 502, 503, 504],
+                surfaces: [71, 72, 73, 74],
+                inners: [61, 62, 63, 64]),
+            42));
+
+        Assert.Equal(new WheelTemperatures(501, 71, 61), result.RearLeft);
+        Assert.Equal(new WheelTemperatures(502, 72, 62), result.RearRight);
+        Assert.Equal(new WheelTemperatures(503, 73, 63), result.FrontLeft);
+        Assert.Equal(new WheelTemperatures(504, 74, 64), result.FrontRight);
+    }
+
+    [Fact]
+    public void RejectsInvalidOrTruncatedTemperaturePackets()
+    {
+        byte[] wrongFormat = PacketBuilder.Temperatures();
+        BinaryPrimitives.WriteUInt16LittleEndian(wrongFormat, 2024);
+        byte[] wrongType = PacketBuilder.Temperatures();
+        wrongType[6] = F125PacketParser.CarDamagePacketId;
+        int exactLength = F125PacketParser.PacketHeaderSize +
+            (3 * F125PacketParser.CarTelemetryRecordSize) +
+            F125PacketParser.InnerTemperatureOffset +
+            F125PacketParser.TemperatureWheelCount;
+
+        Assert.Null(F125PacketParser.ParseTemperatures(wrongFormat, 1));
+        Assert.Null(F125PacketParser.ParseTemperatures(wrongType, 1));
+        Assert.Null(F125PacketParser.ParseTemperatures(PacketBuilder.Temperatures(22), 1));
+        Assert.NotNull(F125PacketParser.ParseTemperatures(PacketBuilder.Temperatures(3, length: exactLength), 1));
+        Assert.Null(F125PacketParser.ParseTemperatures(PacketBuilder.Temperatures(3, length: exactLength - 1), 1));
+    }
+
+    [Fact]
     public void RejectsWrongFormatPacketTypeAndPlayerIndex()
     {
         byte[] wrongFormat = PacketBuilder.Pedals();

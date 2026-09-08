@@ -42,11 +42,22 @@ public sealed record OverlayWidgetSettings(
         Scale: 1,
         Left: null,
         Top: null);
+
+    public static OverlayWidgetSettings DefaultTemperature { get; } = new(
+        Enabled: false,
+        Locked: false,
+        Opacity: 0.7,
+        Scale: 1,
+        Left: null,
+        Top: null);
 }
 
 public sealed record OverlaySettings(
     OverlayWidgetSettings Pedals,
-    OverlayWidgetSettings TyreWear);
+    OverlayWidgetSettings TyreWear)
+{
+    public OverlayWidgetSettings Temperature { get; init; } = OverlayWidgetSettings.DefaultTemperature;
+}
 
 public sealed record AppSettings(
     bool SteeringEnabledByDefault,
@@ -71,11 +82,17 @@ public sealed record AppSettings(
     [JsonIgnore]
     public OverlayWidgetSettings TyreWearOverlay { get; init; } = OverlayWidgetSettings.DefaultTyreWear;
 
-    // The wire shape is intentionally stable: overlays.pedals and
-    // overlays.tyreWear. The convenience properties above keep call sites
-    // strongly typed and source-compatible with the original settings record.
+    [JsonIgnore]
+    public OverlayWidgetSettings TemperatureOverlay { get; init; } = OverlayWidgetSettings.DefaultTemperature;
+
+    // The wire shape stores independently persisted widgets under overlays.
+    // The convenience properties above keep call sites strongly typed and
+    // source-compatible with the original settings record.
     [JsonPropertyName("overlays")]
-    public OverlaySettings Overlays => new(PedalsOverlay, TyreWearOverlay);
+    public OverlaySettings Overlays => new(PedalsOverlay, TyreWearOverlay)
+    {
+        Temperature = TemperatureOverlay,
+    };
 
     public static AppSettings Default { get; } = new(
         SteeringEnabledByDefault: false,

@@ -13,6 +13,7 @@ public static partial class SettingsSanitizer
         JsonElement overlays = GetObject(input, "overlays");
         JsonElement pedalsOverlay = GetObject(overlays, "pedals");
         JsonElement tyreWearOverlay = GetObject(overlays, "tyreWear");
+        JsonElement temperatureOverlay = GetObject(overlays, "temperature");
         AppSettings defaults = AppSettings.Default;
         double legacyTransparency = Number(input, "overlayTransparency", 0.2, 1, defaults.OverlayTransparency);
         bool hasPedalsOpacity = TryGet(pedalsOverlay, "opacity", out _);
@@ -53,6 +54,10 @@ public static partial class SettingsSanitizer
                 tyreWearOverlay,
                 defaults.TyreWearOverlay,
                 defaults.TyreWearOverlay.Opacity),
+            TemperatureOverlay = OverlayWidget(
+                temperatureOverlay,
+                defaults.TemperatureOverlay,
+                defaults.TemperatureOverlay.Opacity),
         };
 
         return sanitized;

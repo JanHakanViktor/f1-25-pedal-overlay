@@ -37,6 +37,12 @@ public partial class SettingsWindow : Window
     // open), while Restore defaults deliberately replaces both baselines.
     private OverlayWidgetSettings _pendingPedalsOverlay;
     private OverlayWidgetSettings _pendingTyreWearOverlay;
+    private OverlayWidgetSettings _pendingTemperatureOverlay;
+    private readonly CheckBox _temperatureEnabled = new();
+    private readonly CheckBox _temperatureLocked = new();
+    private readonly Slider _temperatureOpacity = new();
+    private readonly Slider _temperatureScale = new();
+    private bool _temperaturePositionReset;
     private LockupColorMode _pendingLockupColorMode;
     private LockupColorSettings _pendingLockupColors;
     private readonly CheckBox _steeringDefault = new();
@@ -90,6 +96,7 @@ public partial class SettingsWindow : Window
         _initial = settings;
         _pendingPedalsOverlay = settings.PedalsOverlay;
         _pendingTyreWearOverlay = settings.TyreWearOverlay;
+        _pendingTemperatureOverlay = settings.TemperatureOverlay;
         _pendingLockupColorMode = settings.LockupColorMode;
         _pendingLockupColors = settings.LockupColors;
         _save = save;
@@ -152,6 +159,8 @@ public partial class SettingsWindow : Window
         ConfigureSlider(_pedalsScale, 0.5, 2, 0.01, 0.1, _initial.PedalsOverlay.Scale);
         ConfigureSlider(_tyreWearOpacity, 0.2, 1, 0.01, 0.1, _initial.TyreWearOverlay.Opacity);
         ConfigureSlider(_tyreWearScale, 0.5, 2, 0.01, 0.1, _initial.TyreWearOverlay.Scale);
+        ConfigureSlider(_temperatureOpacity, 0.2, 1, 0.01, 0.1, _initial.TemperatureOverlay.Opacity);
+        ConfigureSlider(_temperatureScale, 0.5, 2, 0.01, 0.1, _initial.TemperatureOverlay.Scale);
         ConfigureSlider(_sensitivity, 0.15, 0.9, 0.01, 0.1, _initial.LockupSensitivity);
         ConfigureSlider(_duration, 2, 15, 0.5, 1, _initial.GraphDurationSeconds);
 
@@ -176,11 +185,18 @@ public partial class SettingsWindow : Window
         PopulateFromSettings(AppSettings.Default);
         _pedalsPositionReset = true;
         _tyreWearPositionReset = true;
+        _temperaturePositionReset = true;
         ShowSnackbar("Defaults restored for this form.");
     }
 
     private void PopulateFromSettings(AppSettings settings)
     {
+        _pendingTemperatureOverlay = settings.TemperatureOverlay;
+        _temperaturePositionReset = false;
+        _temperatureEnabled.IsChecked = settings.TemperatureOverlay.Enabled;
+        _temperatureLocked.IsChecked = settings.TemperatureOverlay.Locked;
+        _temperatureOpacity.Value = settings.TemperatureOverlay.Opacity;
+        _temperatureScale.Value = settings.TemperatureOverlay.Scale;
         _pendingPedalsOverlay = settings.PedalsOverlay;
         _pendingTyreWearOverlay = settings.TyreWearOverlay;
         _pendingLockupColorMode = settings.LockupColorMode;
@@ -224,6 +240,12 @@ public partial class SettingsWindow : Window
         if (_currentSettings is not null)
         {
             AppSettings current = _currentSettings();
+            if (!_temperaturePositionReset)
+                _pendingTemperatureOverlay = _pendingTemperatureOverlay with
+                {
+                    Left = current.TemperatureOverlay.Left,
+                    Top = current.TemperatureOverlay.Top,
+                };
             if (!_pedalsPositionReset)
             {
                 _pendingPedalsOverlay = _pendingPedalsOverlay with
@@ -259,6 +281,13 @@ public partial class SettingsWindow : Window
             _pendingLockupColors with { Single = _singleColor.Text.Trim() })
         {
             SteeringPosition = _steeringPosition.SelectedIndex == 1 ? SteeringPosition.Right : SteeringPosition.Left,
+            TemperatureOverlay = _pendingTemperatureOverlay with
+            {
+                Enabled = _temperatureEnabled.IsChecked == true,
+                Locked = _temperatureLocked.IsChecked == true,
+                Opacity = Math.Clamp(_temperatureOpacity.Value, 0.2, 1),
+                Scale = Math.Clamp(_temperatureScale.Value, 0.5, 2),
+            },
             PedalsOverlay = _pendingPedalsOverlay with
             {
                 Enabled = _pedalsEnabled.IsChecked == true,
@@ -285,6 +314,8 @@ public partial class SettingsWindow : Window
         _initial = _currentSettings?.Invoke() ?? candidate;
         _pendingPedalsOverlay = _initial.PedalsOverlay;
         _pendingTyreWearOverlay = _initial.TyreWearOverlay;
+        _pendingTemperatureOverlay = _initial.TemperatureOverlay;
+        _temperaturePositionReset = false;
         _pendingLockupColorMode = _initial.LockupColorMode;
         _pendingLockupColors = _initial.LockupColors;
         _pedalsPositionReset = false;
@@ -448,25 +479,31 @@ public partial class SettingsWindow : Window
         OverlaysPage.Children.Add(CreateOverlayCard(
             "PEDALS & INPUTS",
             "Live throttle, brake, steering and input history.",
-            false,
+            "Pedals",
             CreatePedalPreview(),
             _pedalsEnabled,
             _pedalsLocked,
             _transparency,
             _pedalsScale,
             () => _pendingPedalsOverlay,
-            value => _pendingPedalsOverlay = value));
+            value => _pendingPedalsOverlay = value, () => _pedalsPositionReset = true));
         OverlaysPage.Children.Add(CreateOverlayCard(
             "TYRE WEAR",
             "Four-corner tyre degradation at a glance.",
-            true,
+            "TyreWear",
             CreateTyrePreview(),
             _tyreWearEnabled,
             _tyreWearLocked,
             _tyreWearOpacity,
             _tyreWearScale,
             () => _pendingTyreWearOverlay,
-            value => _pendingTyreWearOverlay = value));
+            value => _pendingTyreWearOverlay = value, () => _tyreWearPositionReset = true));
+        OverlaysPage.Children.Add(CreateOverlayCard(
+            "TYRES & BRAKES", "Tyre surface (T) and brake (B) temperatures in °C.",
+            "Temperature", CreateTemperaturePreview(),
+            _temperatureEnabled, _temperatureLocked, _temperatureOpacity, _temperatureScale,
+            () => _pendingTemperatureOverlay, value => _pendingTemperatureOverlay = value,
+            () => _temperaturePositionReset = true));
 
         StackPanel arrangePanel = new() { Margin = new Thickness(0, 4, 0, 8) };
         _arrangeButton = new Button
@@ -501,16 +538,16 @@ public partial class SettingsWindow : Window
         OverlaysPage.Children.Add(arrangePanel);
     }
 
-    private FrameworkElement CreateOverlayCard(string title, string description, bool tyreWear,
+    private FrameworkElement CreateOverlayCard(string title, string description, string prefix,
         FrameworkElement preview, CheckBox enabled, CheckBox locked, Slider opacity, Slider scale,
-        Func<OverlayWidgetSettings> read, Action<OverlayWidgetSettings> write)
+        Func<OverlayWidgetSettings> read, Action<OverlayWidgetSettings> write, Action resetPosition)
     {
         enabled.Content = "Enabled";
         locked.Content = "Lock position";
-        RegisterDynamicName(tyreWear ? "TyreWearEnabledToggle" : "PedalsEnabledToggle", enabled);
-        RegisterDynamicName(tyreWear ? "TyreWearLockedToggle" : "PedalsLockedToggle", locked);
-        RegisterDynamicName(tyreWear ? "TyreWearOpacitySlider" : "PedalsOpacitySlider", opacity);
-        RegisterDynamicName(tyreWear ? "TyreWearScaleSlider" : "PedalsScaleSlider", scale);
+        RegisterDynamicName(prefix + "EnabledToggle", enabled);
+        RegisterDynamicName(prefix + "LockedToggle", locked);
+        RegisterDynamicName(prefix + "OpacitySlider", opacity);
+        RegisterDynamicName(prefix + "ScaleSlider", scale);
 
         TextBlock status = new()
         {
@@ -518,7 +555,7 @@ public partial class SettingsWindow : Window
             FontSize = 11,
             Margin = new Thickness(0, 5, 0, 0),
         };
-        RegisterDynamicName(tyreWear ? "TyreWearStatusText" : "PedalsStatusText", status);
+        RegisterDynamicName(prefix + "StatusText", status);
 
         enabled.Checked += (_, _) => { write(read() with { Enabled = true }); RefreshOverlayStatus(); };
         enabled.Unchecked += (_, _) => { write(read() with { Enabled = false }); RefreshOverlayStatus(); };
@@ -545,12 +582,11 @@ public partial class SettingsWindow : Window
             Padding = new Thickness(12, 6, 12, 6),
             Margin = new Thickness(0, 2, 0, 0),
         };
-        RegisterDynamicName(tyreWear ? "TyreWearResetPositionButton" : "PedalsResetPositionButton", reset);
+        RegisterDynamicName(prefix + "ResetPositionButton", reset);
         reset.Click += (_, _) =>
         {
             write(read() with { Left = null, Top = null });
-            if (tyreWear) _tyreWearPositionReset = true;
-            else _pedalsPositionReset = true;
+            resetPosition();
             status.Text = "Position reset. Save changes to apply.";
         };
         configureContent.Children.Add(reset);
@@ -620,6 +656,16 @@ public partial class SettingsWindow : Window
             new TextBlock { Text = "No telemetry packets or receiver controls are added here; this page only edits the existing connection setting.", Foreground = Brush("#AAB5C2"), TextWrapping = TextWrapping.Wrap }));
     }
 
+    private FrameworkElement CreateTemperaturePreview()
+    {
+        TemperatureSurface preview = new(() => 0) { Width = 134, Height = 90, IsHitTestVisible = false };
+        preview.Initialize(_initial.TemperatureOverlay);
+        preview.SetTelemetry(new TemperatureTelemetry(
+            new WheelTemperatures(850, 106, 98), new WheelTemperatures(1250, 121, 108),
+            new WheelTemperatures(160, 64, 70), new WheelTemperatures(480, 92, 94), 0));
+        return preview;
+    }
+
     private void BuildAppearancePage()
     {
         _steeringDefault.Content = "Enable steering by default";
@@ -656,11 +702,13 @@ public partial class SettingsWindow : Window
         {
             string pedals = _pendingPedalsOverlay.Enabled ? "enabled" : "disabled";
             string tyres = _pendingTyreWearOverlay.Enabled ? "enabled" : "disabled";
-            _dashboardOverlaySummary.Text = $"Pedals & inputs: {pedals}\nTyre wear: {tyres}";
+            string temperatures = _pendingTemperatureOverlay.Enabled ? "enabled" : "disabled";
+            _dashboardOverlaySummary.Text = $"Pedals & inputs: {pedals}\nTyre wear: {tyres}\nTyres & brakes: {temperatures}";
         }
 
         RefreshCardStatus(_pendingPedalsOverlay, "PedalsStatusText");
         RefreshCardStatus(_pendingTyreWearOverlay, "TyreWearStatusText");
+        RefreshCardStatus(_pendingTemperatureOverlay, "TemperatureStatusText");
     }
 
     private void RefreshCardStatus(OverlayWidgetSettings settings, string name)

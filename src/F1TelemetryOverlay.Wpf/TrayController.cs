@@ -13,6 +13,7 @@ internal sealed class TrayController : IDisposable
     private readonly ToolStripMenuItem _lockItem;
     private readonly ToolStripMenuItem _steeringItem;
     private readonly ToolStripMenuItem _tyreWearItem;
+    private readonly ToolStripMenuItem _temperatureItem;
     private readonly ToolStripMenuItem _settingsItem;
     private readonly ToolStripMenuItem _exitItem;
     private bool _disposed;
@@ -31,6 +32,7 @@ internal sealed class TrayController : IDisposable
         _lockItem = new ToolStripMenuItem();
         _steeringItem = new ToolStripMenuItem("Enable steering") { CheckOnClick = true };
         _tyreWearItem = new ToolStripMenuItem("Enable tyre wear overlay") { CheckOnClick = true };
+        _temperatureItem = new ToolStripMenuItem("Enable temperatures overlay") { CheckOnClick = true };
         _exitItem = new ToolStripMenuItem("Exit");
 
         _settingsItem.Click += (_, _) => _app.OpenSettings();
@@ -38,9 +40,10 @@ internal sealed class TrayController : IDisposable
         _lockItem.Click += (_, _) => _app.SetLocked(!_app.IsLocked);
         _steeringItem.Click += (_, _) => _app.SetSteeringEnabled(_steeringItem.Checked);
         _tyreWearItem.Click += (_, _) => _app.SetTyreWearEnabled(_tyreWearItem.Checked);
+        _temperatureItem.Click += (_, _) => _app.SetTemperatureEnabled(_temperatureItem.Checked);
         _exitItem.Click += (_, _) => _app.Shutdown();
 
-        _menu.Items.AddRange([_settingsItem, _visibilityItem, _lockItem, _steeringItem, _tyreWearItem,
+        _menu.Items.AddRange([_settingsItem, _visibilityItem, _lockItem, _steeringItem, _tyreWearItem, _temperatureItem,
             new ToolStripSeparator(), _exitItem]);
 
         _notifyIcon = new NotifyIcon
@@ -64,6 +67,8 @@ internal sealed class TrayController : IDisposable
         _steeringItem.ShortcutKeyDisplayString = _app.Settings.Shortcuts.ToggleSteering;
         _tyreWearItem.Text = _app.IsTyreWearEnabled ? "Disable tyre wear overlay" : "Enable tyre wear overlay";
         _tyreWearItem.Checked = _app.IsTyreWearEnabled;
+        _temperatureItem.Text = _app.IsTemperatureEnabled ? "Disable temperatures overlay" : "Enable temperatures overlay";
+        _temperatureItem.Checked = _app.IsTemperatureEnabled;
         _exitItem.ShortcutKeyDisplayString = _app.Settings.Shortcuts.Quit;
     }
 

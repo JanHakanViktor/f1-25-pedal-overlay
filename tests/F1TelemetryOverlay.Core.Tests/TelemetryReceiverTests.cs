@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using F1TelemetryOverlay.Core;
@@ -69,6 +70,35 @@ public sealed class TelemetryReceiverTests
         Assert.Equal(45.75, received.FrontLeftPercentage, 4);
         Assert.Equal(67.125, received.FrontRightPercentage, 4);
         Assert.Equal(0, Volatile.Read(ref pedalTelemetryCount));
+    }
+
+    [Fact]
+    public async Task CarTelemetryPacketRaisesPedalsAndTemperatures()
+    {
+        int port = GetFreeUdpPort();
+        await using TelemetryReceiver receiver = new(port);
+        TaskCompletionSource<PedalTelemetry> pedals = NewCompletionSource<PedalTelemetry>();
+        TaskCompletionSource<TemperatureTelemetry> temperatures = NewCompletionSource<TemperatureTelemetry>();
+        receiver.TelemetryReceived += value => pedals.TrySetResult(value);
+        receiver.TemperaturesReceived += value => temperatures.TrySetResult(value);
+        receiver.Start();
+
+        using UdpClient sender = new();
+        byte[] packet = PacketBuilder.Temperatures(
+            playerIndex: 1,
+            brakes: [600, 610, 620, 630],
+            surfaces: [70, 71, 72, 73],
+            inners: [80, 81, 82, 83]);
+        int playerOffset = F125PacketParser.PacketHeaderSize + F125PacketParser.CarTelemetryRecordSize;
+        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(playerOffset), 275);
+        await sender.SendAsync(packet, new IPEndPoint(IPAddress.Loopback, port));
+
+        PedalTelemetry receivedPedals = await pedals.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        TemperatureTelemetry receivedTemperatures = await temperatures.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.Equal(275, receivedPedals.SpeedKph);
+        Assert.Equal(new WheelTemperatures(600, 70, 80), receivedTemperatures.RearLeft);
+        Assert.Equal(new WheelTemperatures(630, 73, 83), receivedTemperatures.FrontRight);
     }
 
     [Fact]

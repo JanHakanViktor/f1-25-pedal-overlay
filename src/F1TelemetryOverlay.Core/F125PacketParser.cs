@@ -8,6 +8,10 @@ public static class F125PacketParser
     public const int PacketHeaderSize = 29;
     public const byte CarTelemetryPacketId = 6;
     public const int CarTelemetryRecordSize = 60;
+    public const int BrakeTemperatureOffset = 22;
+    public const int SurfaceTemperatureOffset = 30;
+    public const int InnerTemperatureOffset = 34;
+    public const int TemperatureWheelCount = 4;
     public const int MaximumCars = 22;
     public const int CarTelemetryPacketSize = 1352;
     public const byte CarDamagePacketId = 10;
@@ -48,6 +52,35 @@ public static class F125PacketParser
         double steering = ClampSteering(ReadSingle(packet, recordOffset + 6));
         double brake = ClampInput(ReadSingle(packet, brakeOffset));
         return new PedalTelemetry(speedKph, throttle, steering, brake, BrakeLockup.None, timestamp);
+    }
+
+    public static TemperatureTelemetry? ParseTemperatures(ReadOnlySpan<byte> packet, long timestamp)
+    {
+        if (packet.Length < PacketHeaderSize ||
+            BinaryPrimitives.ReadUInt16LittleEndian(packet) != PacketFormat ||
+            packet[6] != CarTelemetryPacketId)
+        {
+            return null;
+        }
+
+        int playerCarIndex = packet[27];
+        if (playerCarIndex >= MaximumCars)
+        {
+            return null;
+        }
+
+        int recordOffset = PacketHeaderSize + (playerCarIndex * CarTelemetryRecordSize);
+        if (packet.Length < recordOffset + InnerTemperatureOffset + TemperatureWheelCount)
+        {
+            return null;
+        }
+
+        return new TemperatureTelemetry(
+            ReadWheelTemperatures(packet, recordOffset, 0),
+            ReadWheelTemperatures(packet, recordOffset, 1),
+            ReadWheelTemperatures(packet, recordOffset, 2),
+            ReadWheelTemperatures(packet, recordOffset, 3),
+            timestamp);
     }
 
     public static WheelMotionTelemetry? ParseWheelMotion(ReadOnlySpan<byte> packet, long timestamp)
@@ -110,6 +143,12 @@ public static class F125PacketParser
 
     private static float ReadSingle(ReadOnlySpan<byte> packet, int offset) =>
         BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(packet[offset..]));
+
+    private static WheelTemperatures ReadWheelTemperatures(ReadOnlySpan<byte> packet, int recordOffset, int wheelIndex) =>
+        new(
+            BinaryPrimitives.ReadUInt16LittleEndian(packet[(recordOffset + BrakeTemperatureOffset + (wheelIndex * sizeof(ushort)))..]),
+            packet[recordOffset + SurfaceTemperatureOffset + wheelIndex],
+            packet[recordOffset + InnerTemperatureOffset + wheelIndex]);
 
     private static double ClampInput(float value) => float.IsFinite(value) ? Math.Clamp(value, 0, 1) : 0;
 
