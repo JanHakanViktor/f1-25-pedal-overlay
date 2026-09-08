@@ -38,7 +38,7 @@ If Windows asks for network access, allow the application on **Private networks*
 
 ## Telemetry Hub and tray menu
 
-Right-click either overlay or its icon beside the Windows clock to open the same menu:
+Right-click any overlay or its icon beside the Windows clock to open the same menu:
 
 - **Telemetry Hub** opens the central settings window.
 - **Show/Hide overlays** changes global visibility for the enabled overlays.
@@ -47,6 +47,12 @@ Right-click either overlay or its icon beside the Windows clock to open the same
 - **Exit** closes the application completely.
 
 The Telemetry Hub opens on **Overlays**. Enable **Tyre wear** to show the four-circle tyre widget, then expand **Configure** to set each widget's lock, opacity (0.2–1.0), scale (0.5–2.0), and reset position. **Arrange overlays** saves the current form before temporarily unlocking enabled widgets for dragging; choose **Done arranging** to restore each widget's saved lock choice. Disabled widgets remain hidden.
+
+Enable **Tyres & brakes** for a separate four-corner temperature overlay. Front wheels appear above rear wheels; **T** is tyre surface temperature and **B** is brake temperature, both in °C. Each reading has its own colour and subtle tint. The overlay starts disabled and has independent position, scale, opacity, and lock settings. Missing readings, or readings older than 1.5 seconds, show muted `--°` values. Demo mode supplies sample temperatures as well as pedals and wear.
+
+Temperature colours follow the game's cold-to-hot style: blue, green, yellow, orange, red. The current bands are an approximation: tyre surface transitions at 70/100/110/120°C and brakes at 200/800/1000/1200°C. EA's UDP specification supplies temperatures but no HUD colour values or thresholds; exact parity, including compound-specific behaviour, still requires live-game calibration. Tyre inner temperature is parsed separately and is not substituted for surface temperature.
+
+Tyre-wear circles have a faint fill in their current degradation colour, with a stronger arc showing the wear percentage.
 
 The **Connection** page retains the UDP port and live receiver status. **Appearance** retains steering startup/position, graph duration, lock-up sensitivity, and the HSV lock-up colour picker. Exact in-game colour can vary with overlay transparency and the game compositor, so use the colour picker as a calibration aid rather than a pixel-perfect guarantee. **Shortcuts** retains every existing global shortcut capture.
 

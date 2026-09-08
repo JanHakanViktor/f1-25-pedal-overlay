@@ -14,6 +14,53 @@ namespace F1TelemetryOverlay.Wpf.Tests;
 public sealed class SettingsWindowTests
 {
     [Fact]
+    public void TemperatureCardSavesIndependentlyMergesDragAndRestoresDefaults()
+    {
+        Exception? failure = null;
+        Thread thread = new(() =>
+        {
+            try
+            {
+                AppSettings current = AppSettings.Default;
+                int saves = 0;
+                SettingsWindow window = new(current, candidate =>
+                {
+                    current = candidate;
+                    saves++;
+                    return (true, string.Empty);
+                }, currentSettings: () => current);
+                ((CheckBox)window.FindName("TemperatureEnabledToggle")!).IsChecked = true;
+                ((CheckBox)window.FindName("TemperatureLockedToggle")!).IsChecked = true;
+                ((Slider)window.FindName("TemperatureOpacitySlider")!).Value = 0.8;
+                ((Slider)window.FindName("TemperatureScaleSlider")!).Value = 1.5;
+                Assert.Equal(0, saves);
+                Invoke(window, "SaveClicked", [window, new RoutedEventArgs()]);
+                Assert.Equal(new OverlayWidgetSettings(true, true, 0.8, 1.5, null, null), current.TemperatureOverlay);
+                Assert.Equal(AppSettings.Default.PedalsOverlay, current.PedalsOverlay);
+                Assert.Equal(AppSettings.Default.TyreWearOverlay, current.TyreWearOverlay);
+                current = current with { TemperatureOverlay = current.TemperatureOverlay with { Left = 350, Top = 125 } };
+                Invoke(window, "SaveClicked", [window, new RoutedEventArgs()]);
+                Assert.Equal(350, current.TemperatureOverlay.Left);
+                Assert.Equal(125, current.TemperatureOverlay.Top);
+                ((Button)window.FindName("TemperatureResetPositionButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Invoke(window, "SaveClicked", [window, new RoutedEventArgs()]);
+                Assert.Null(current.TemperatureOverlay.Left);
+                Assert.Null(current.TemperatureOverlay.Top);
+                Invoke(window, "RestoreDefaultsClicked", [window, new RoutedEventArgs()]);
+                Assert.True(current.TemperatureOverlay.Enabled);
+                Invoke(window, "SaveClicked", [window, new RoutedEventArgs()]);
+                Assert.Equal(AppSettings.Default.TemperatureOverlay, current.TemperatureOverlay);
+                window.Close();
+            }
+            catch (Exception exception) { failure = exception; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact]
     public void HubConstructsAtMinimumSizeNavigatesPagesAndRendersOnSta()
     {
         Exception? failure = null;
@@ -95,6 +142,18 @@ public sealed class SettingsWindowTests
                     encoder.Save(stream);
                 }
                 Assert.True(new FileInfo(defaultPath).Length > 0);
+
+                settingsScroll.ScrollToBottom();
+                window.UpdateLayout();
+                Assert.True(settingsScroll.ExtentWidth <= settingsScroll.ViewportWidth + 1);
+                RenderTargetBitmap temperatureCardBitmap = new(1000, 720, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                temperatureCardBitmap.Render(window);
+                using (FileStream stream = File.Create(Path.Combine(Path.GetTempPath(), "telemetry-hub-temperature-card.png")))
+                {
+                    PngBitmapEncoder encoder = new();
+                    encoder.Frames.Add(BitmapFrame.Create(temperatureCardBitmap));
+                    encoder.Save(stream);
+                }
 
                 window.Close();
             }
