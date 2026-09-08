@@ -27,6 +27,7 @@ public partial class App : System.Windows.Application
     private TrayController? _tray;
     private MainWindow? _overlay;
     private TyreWearWindow? _tyreOverlay;
+    private TemperatureWindow? _temperatureOverlay;
     private SettingsWindow? _settingsWindow;
     private DispatcherTimer? _demoTimer;
     private AppSettings _settings = AppSettings.Default;
@@ -44,7 +45,8 @@ public partial class App : System.Windows.Application
     internal bool IsLocked => IsEnabledOverlayLocked();
     internal bool IsSteeringEnabled => _steeringEnabled;
     internal bool IsDemoEnabled => _demoEnabled;
-    internal bool IsOverlayVisible => _overlay?.IsVisible == true || _tyreOverlay?.IsVisible == true;
+    internal bool IsOverlayVisible => _overlay?.IsVisible == true || _tyreOverlay?.IsVisible == true || _temperatureOverlay?.IsVisible == true;
+    internal bool IsTemperatureEnabled => _settings.TemperatureOverlay.Enabled;
     internal bool IsTyreWearEnabled => _settings.TyreWearOverlay.Enabled;
     internal bool IsTyreWearVisible => _tyreOverlay?.IsVisible == true;
     internal bool IsArranging => _isArranging;
@@ -91,6 +93,9 @@ public partial class App : System.Windows.Application
         _tyreOverlay = new TyreWearWindow(this);
         _tyreOverlay.DragCompleted += SaveTyreWearPosition;
         PositionTyreOverlay(_tyreOverlay, _settings.TyreWearOverlay);
+        _temperatureOverlay = new TemperatureWindow(this);
+        _temperatureOverlay.DragCompleted += SaveTemperaturePosition;
+        PositionTemperatureOverlay(_temperatureOverlay, _settings.TemperatureOverlay);
         ApplyOverlayVisibility();
 
         _tray = new TrayController(this);
@@ -100,6 +105,7 @@ public partial class App : System.Windows.Application
         };
         _receiver.TelemetryReceived += ReceiveTelemetry;
         _receiver.TyreWearReceived += ReceiveTyreWear;
+        _receiver.TemperaturesReceived += ReceiveTemperatures;
         _receiver.StatusChanged += ReceiveStatus;
         _receiver.Start();
 
@@ -118,6 +124,7 @@ public partial class App : System.Windows.Application
         _shortcutManager?.Dispose();
         _tray?.Dispose();
         _tyreOverlay?.Close();
+        _temperatureOverlay?.Close();
         if (_ownsSingleInstanceMutex) _singleInstanceMutex?.ReleaseMutex();
         _singleInstanceMutex?.Dispose();
         base.OnExit(e);
@@ -163,6 +170,7 @@ public partial class App : System.Windows.Application
         {
             PedalsOverlay = _settings.PedalsOverlay with { Locked = locked },
             TyreWearOverlay = _settings.TyreWearOverlay with { Locked = locked },
+            TemperatureOverlay = _settings.TemperatureOverlay with { Locked = locked },
         };
         // Keep the in-memory state authoritative even if the settings file is
         // temporarily unavailable. This makes lock/unlock deterministic for
@@ -182,6 +190,7 @@ public partial class App : System.Windows.Application
         }
         _overlay?.SetLocked(_settings.PedalsOverlay.Locked);
         _tyreOverlay?.SetLocked(_settings.TyreWearOverlay.Locked);
+        _temperatureOverlay?.SetLocked(_settings.TemperatureOverlay.Locked);
         _tray?.Refresh();
     }
 
@@ -206,11 +215,20 @@ public partial class App : System.Windows.Application
         _tray?.Refresh();
     }
 
+    internal void SetTemperatureEnabled(bool enabled)
+    {
+        if (_settings.TemperatureOverlay.Enabled == enabled) return;
+        if (!TrySaveSettings(_settings with
+            { TemperatureOverlay = _settings.TemperatureOverlay with { Enabled = enabled } }, out _))
+            _tray?.Refresh();
+    }
+
     internal void SetDemoEnabled(bool enabled)
     {
         _demoEnabled = enabled;
         _demoTimer?.Stop();
         _demoTimer = null;
+        _temperatureOverlay?.ClearTemperatures();
 
         if (enabled)
         {
@@ -249,6 +267,12 @@ public partial class App : System.Windows.Application
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                 _lastTyreWear = demoWear;
                 _tyreOverlay?.UpdateWear(demoWear);
+                _temperatureOverlay?.UpdateTemperatures(new TemperatureTelemetry(
+                    new WheelTemperatures(850 + (int)(brake * 200), 106, 98),
+                    new WheelTemperatures(1120 + (int)(brake * 150), 121, 108),
+                    new WheelTemperatures(160 + (int)(brake * 100), 64, 70),
+                    new WheelTemperatures(480 + (int)(brake * 200), 92, 94),
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
             };
             _demoTimer.Start();
         }
@@ -286,6 +310,7 @@ public partial class App : System.Windows.Application
         _overlaysVisible = true;
         _overlay.SetArrangeMode(true);
         _tyreOverlay.SetArrangeMode(true);
+        _temperatureOverlay?.SetArrangeMode(true);
         _settingsWindow?.SetArrangeMode(true);
         ApplyOverlayVisibility();
         _tray?.Refresh();
@@ -298,6 +323,7 @@ public partial class App : System.Windows.Application
         _isArranging = false;
         _overlay?.SetArrangeMode(false);
         _tyreOverlay?.SetArrangeMode(false);
+        _temperatureOverlay?.SetArrangeMode(false);
         _settingsWindow?.SetArrangeMode(false);
         _overlaysVisible = _arrangePreviousOverlaysVisible;
         ApplyOverlayVisibility();
@@ -343,6 +369,11 @@ public partial class App : System.Windows.Application
         if (_settings.UdpPort != _udpPort) RestartReceiver(_settings.UdpPort);
         _overlay?.ApplySettings(_settings);
         _tyreOverlay?.ApplySettings(_settings);
+        _temperatureOverlay?.ApplySettings(_settings);
+        if (_temperatureOverlay is not null &&
+            (previous.TemperatureOverlay.Left != _settings.TemperatureOverlay.Left ||
+             previous.TemperatureOverlay.Top != _settings.TemperatureOverlay.Top))
+            PositionTemperatureOverlay(_temperatureOverlay, _settings.TemperatureOverlay);
         _overlay?.SetLocked(_settings.PedalsOverlay.Locked);
         _tyreOverlay?.SetLocked(_settings.TyreWearOverlay.Locked);
         ApplyOverlayVisibility();
@@ -388,7 +419,13 @@ public partial class App : System.Windows.Application
         {
             _lastTyreWear = null;
             _tyreOverlay?.ClearWear();
+            if (!_demoEnabled) _temperatureOverlay?.ClearTemperatures();
         }
+    }
+
+    private void ReceiveTemperatures(TemperatureTelemetry telemetry)
+    {
+        if (!_demoEnabled) _temperatureOverlay?.UpdateTemperatures(telemetry);
     }
 
     private void RestartReceiver(int port)
@@ -396,12 +433,14 @@ public partial class App : System.Windows.Application
         _receiver?.Dispose();
         _udpPort = port;
         _lastStatus = WaitingStatus(port);
+        _temperatureOverlay?.ClearTemperatures();
         _receiver = new TelemetryReceiver(port)
         {
             LockupSensitivity = _settings.LockupSensitivity,
         };
         _receiver.TelemetryReceived += ReceiveTelemetry;
         _receiver.TyreWearReceived += ReceiveTyreWear;
+        _receiver.TemperaturesReceived += ReceiveTemperatures;
         _receiver.StatusChanged += ReceiveStatus;
         _receiver.Start();
     }
@@ -438,12 +477,30 @@ public partial class App : System.Windows.Application
             else _overlay?.Hide();
             if (_settings.TyreWearOverlay.Enabled) _tyreOverlay?.ShowInactive();
             else _tyreOverlay?.Hide();
+            if (_settings.TemperatureOverlay.Enabled) _temperatureOverlay?.ShowInactive();
+            else _temperatureOverlay?.Hide();
         }
         else
         {
             _overlay?.Hide();
             _tyreOverlay?.Hide();
+            _temperatureOverlay?.Hide();
         }
+    }
+
+    private static void PositionTemperatureOverlay(TemperatureWindow window, OverlayWidgetSettings settings)
+    {
+        Rect area = SystemParameters.WorkArea;
+        window.Left = settings.Left ?? area.Right - window.Width - 40;
+        window.Top = settings.Top ?? area.Top + 220;
+        window.EnsureVisiblePosition();
+    }
+
+    private void SaveTemperaturePosition(double left, double top)
+    {
+        if (!double.IsFinite(left) || !double.IsFinite(top)) return;
+        PersistPosition(_settings with
+            { TemperatureOverlay = _settings.TemperatureOverlay with { Left = left, Top = top } });
     }
 
     private void SavePedalsPosition(double left, double top) => SaveOverlayPosition(false, left, top);
@@ -456,6 +513,11 @@ public partial class App : System.Windows.Application
         AppSettings candidate = tyreWear
             ? _settings with { TyreWearOverlay = _settings.TyreWearOverlay with { Left = left, Top = top } }
             : _settings with { PedalsOverlay = _settings.PedalsOverlay with { Left = left, Top = top } };
+        PersistPosition(candidate);
+    }
+
+    private void PersistPosition(AppSettings candidate)
+    {
         // Retain a successful drag in memory even when the file cannot be
         // written; the next drag or settings save can retry persistence.
         _settings = candidate;
@@ -475,9 +537,10 @@ public partial class App : System.Windows.Application
     }
 
     private bool IsEnabledOverlayLocked() =>
-        (_settings.PedalsOverlay.Enabled || _settings.TyreWearOverlay.Enabled) &&
+        (_settings.PedalsOverlay.Enabled || _settings.TyreWearOverlay.Enabled || _settings.TemperatureOverlay.Enabled) &&
         (!_settings.PedalsOverlay.Enabled || _settings.PedalsOverlay.Locked) &&
-        (!_settings.TyreWearOverlay.Enabled || _settings.TyreWearOverlay.Locked);
+        (!_settings.TyreWearOverlay.Enabled || _settings.TyreWearOverlay.Locked) &&
+        (!_settings.TemperatureOverlay.Enabled || _settings.TemperatureOverlay.Locked);
 
     private static AppSettings SanitizeCandidate(AppSettings candidate)
     {
